@@ -37,12 +37,12 @@ async def upload_to_mux(file_path: str) -> str:
     """Uploads a local file to Mux and returns the new asset's ID."""
     # 1. Create an upload URL
     create_upload_request = mux_python.CreateUploadRequest(
-        cors_origin='*', 
+        cors_origin='*',
         new_asset_settings=mux_python.CreateAssetRequest(
             playback_policy=[mux_python.PlaybackPolicy.PUBLIC]
         )
     )
-    upload_response = uploads_api.create_upload(create_upload_request)
+    upload_response = uploads_api.create_direct_upload(create_upload_request)
     
     # 2. Upload the file
     async with httpx.AsyncClient() as client:
