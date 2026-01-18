@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     await projectsCollection.updateOne(
       { _id: new ObjectId(projectId) },
       {
-        $push: { clips: newClip },
+        $push: { clips: newClip } as any,
         $set: { updatedAt: new Date() },
       }
     );

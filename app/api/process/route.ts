@@ -4,8 +4,10 @@ import { connectToDatabase } from '@/lib/mongodb';
 import { PROJECTS_COLLECTION, Project } from '@/lib/models/Project';
 import { ObjectId } from 'mongodb';
 import { callGumloop } from '@/lib/services/gumloop';
-import { processProjectVideo } from '@/lib/services/ffmpeg';
-import { generateFinalVideoKey } from '@/lib/s3';
+// NOTE: Server-side ffmpeg processing disabled for Vercel deployment
+// Use browser-based processing instead (see components/editor/video-processor.tsx)
+// import { processProjectVideo } from '@/lib/services/ffmpeg';
+// import { generateFinalVideoKey } from '@/lib/s3';
 
 export async function POST(request: NextRequest) {
   try {
@@ -122,38 +124,22 @@ async function processVideoAsync(project: Project, projectId: string) {
       }
     );
 
-    // Step 2: Process video with FFmpeg
-    console.log('Processing video with FFmpeg...');
+    // Step 2: Server-side video processing is disabled for Vercel
+    // Use browser-based processing from the client instead
+    console.log('Gumloop processing complete. Use browser-based video processing.');
 
-    // Reload project with Gumloop output
-    const updatedProject = await projectsCollection.findOne({
-      _id: new ObjectId(projectId),
-    });
-
-    if (!updatedProject) {
-      throw new Error('Project not found after Gumloop update');
-    }
-
-    const finalVideoUrl = await processProjectVideo(updatedProject as Project);
-
-    console.log(`Video processing complete: ${finalVideoUrl}`);
-
-    // Step 3: Update project with final video URL and status
-    const finalS3Key = generateFinalVideoKey(project.username, project.projectName);
-
+    // Mark project as ready for client-side processing
     await projectsCollection.updateOne(
       { _id: new ObjectId(projectId) },
       {
         $set: {
-          status: 'completed',
-          finalVideoUrl,
-          finalVideoS3Key: finalS3Key,
+          status: 'ready_for_processing', // Client will pick this up
           updatedAt: new Date(),
         },
       }
     );
 
-    console.log(`Project ${projectId} completed successfully`);
+    console.log(`Project ${projectId} ready for browser-based video processing`);
   } catch (error) {
     console.error(`Error processing video for project ${projectId}:`, error);
 
