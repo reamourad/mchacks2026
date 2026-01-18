@@ -2,6 +2,7 @@ import os
 import tempfile
 import shutil
 import asyncio
+import httpx
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,7 +15,7 @@ from db import (
     update_project_completed,
 )
 from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key, get_s3_url
-from video_processing import upload_to_mux, cut_clip_with_mux, assemble_video
+from video_processing import create_video_from_matches, create_merged_video
 from gumloop import start_gumloop_pipeline, get_gumloop_results, parse_timestamp
 
 
@@ -81,87 +82,70 @@ async def get_run_results_endpoint(run_id: str):
 
 
 @app.post("/create_video")
-async def create_video_from_matches(request: CreateVideoRequest):
+async def create_video_endpoint(request: CreateVideoRequest):
     """
-    Creates a final video from Gumloop matches using Mux for processing.
+    Creates a final video from Gumloop matches using Creatomate for processing.
     """
-    temp_dir = tempfile.mkdtemp(prefix=f"xpresso-mux-{request.username}-{request.projectName}-")
-
     try:
-        print(f"Creating video for {request.username}/{request.projectName} with {len(request.matches)} matches using Mux.")
+        print(f"Creating video for {request.username}/{request.projectName} with {len(request.matches)} matches using Creatomate.")
 
-        # 1. Upload source clips to Mux
-        source_mux_assets = {}  # Cache S3 key to Mux asset ID
-        for match in request.matches:
-            s3_key = match.get("matched_clip")
-            if not s3_key:
-                continue
-            
-            if s3_key not in source_mux_assets:
-                print(f"Processing source video: {s3_key}")
+        # Use Creatomate to merge clips
+        creatomate_url = await create_video_from_matches(request.matches, get_s3_url)
 
-                # Get S3 URL for the video
-                s3_url = get_s3_url(s3_key)
-                print(f"  S3 URL: {s3_url}")
+        print(f"Creatomate render complete: {creatomate_url}")
 
-                print(f"  Creating Mux asset from S3 URL...")
-                asset_id = await upload_to_mux(s3_url)
-                source_mux_assets[s3_key] = asset_id
-                print(f"  -> Mux Asset ID: {asset_id}")
+        # Download from Creatomate and re-upload to our S3
+        temp_dir = tempfile.mkdtemp(prefix=f"xpresso-{request.username}-{request.projectName}-")
+        try:
+            local_video_path = os.path.join(temp_dir, "final_video.mp4")
 
-        # 2. Create clipped assets on Mux
-        clipped_playback_ids = []
-        clip_tasks = []
+            print(f"Downloading rendered video from Creatomate...")
+            async with httpx.AsyncClient(timeout=300) as client:
+                async with client.stream("GET", creatomate_url, follow_redirects=True) as response:
+                    response.raise_for_status()
+                    with open(local_video_path, "wb") as f:
+                        async for chunk in response.aiter_bytes():
+                            f.write(chunk)
 
-        for i, match in enumerate(request.matches):
-            s3_key = match.get("matched_clip")
-            clip_timestamp = match.get("clip_timestamp")
-            if not s3_key or not clip_timestamp:
-                continue
+            print(f"Uploading to S3...")
+            final_s3_key = generate_final_video_key(request.username, request.projectName)
+            final_video_url = upload_file_to_s3(local_video_path, final_s3_key)
 
-            source_asset_id = source_mux_assets[s3_key]
-            times = parse_timestamp(clip_timestamp)
-            start_time = times["start"]
-            end_time = times["end"]
+            print(f"Video created successfully: {final_video_url}")
 
-            if end_time is None:
-                print(f"Warning: Match {i} has invalid timestamp, skipping.")
-                continue
-            
-            print(f"Creating Mux clip for {s3_key} from {start_time}s to {end_time}s")
-            task = cut_clip_with_mux(source_asset_id, start_time, end_time)
-            clip_tasks.append(task)
+            return {
+                "success": True,
+                "videoUrl": final_video_url,
+                "s3Key": final_s3_key,
+                "clipsProcessed": len(request.matches),
+                "creatomateUrl": creatomate_url,  # Also return this in case S3 upload fails
+            }
+        finally:
+            print(f"Cleaning up temp directory: {temp_dir}")
+            shutil.rmtree(temp_dir)
 
-        # Run all clipping jobs in parallel
-        clipped_playback_ids = await asyncio.gather(*clip_tasks)
+    except Exception as e:
+        print(f"Error creating video with Creatomate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-        if not clipped_playback_ids:
-            raise ValueError("No valid clips were created by Mux.")
 
-        # 3. Assemble all clips
-        final_video_path = os.path.join(temp_dir, "final_video.mp4")
-        print(f"Assembling {len(clipped_playback_ids)} clips into final video.")
-        assemble_video(clipped_playback_ids, final_video_path, temp_dir)
+@app.post("/create_video_direct")
+async def create_video_direct_endpoint(request: CreateVideoRequest):
+    """
+    Creates a final video and returns the Creatomate URL directly (without S3 re-upload).
+    Useful for faster response when S3 storage isn't needed.
+    """
+    try:
+        print(f"Creating video for {request.username}/{request.projectName} with {len(request.matches)} matches.")
 
-        # 4. Upload final video to S3
-        final_s3_key = generate_final_video_key(request.username, request.projectName)
-        final_video_url = upload_file_to_s3(final_video_path, final_s3_key)
-
-        print(f"Video created successfully: {final_video_url}")
+        creatomate_url = await create_video_from_matches(request.matches, get_s3_url)
 
         return {
             "success": True,
-            "videoUrl": final_video_url,
-            "s3Key": final_s3_key,
-            "clipsProcessed": len(clipped_playback_ids),
+            "videoUrl": creatomate_url,
+            "clipsProcessed": len(request.matches),
         }
 
     except Exception as e:
-        print(f"Error creating video with Mux: {e}")
+        print(f"Error creating video with Creatomate: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Clean up temp directory
-        print(f"Cleaning up temp directory: {temp_dir}")
-        shutil.rmtree(temp_dir)
-# I've removed the old /process endpoint and process_video_task as it's now superseded by the Mux-based flow
-# The frontend should now directly call /create_video
