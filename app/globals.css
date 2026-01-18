@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Playwrite+NG+Modern:wght@100;200;300;400&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -63,9 +65,9 @@
 @layer components {
   .nav-button {
     position: relative;
-    padding: 1px;
-    background: linear-gradient(90deg, #FFE95B, #F1FAEE);
-    border-radius: 0.375rem;
+    padding: 2px;
+    background: #FFE95B;
+    border-radius: 9999px;
     transition: all 0.3s ease;
     display: inline-block;
   }
@@ -73,18 +75,18 @@
   .nav-button::before {
     content: attr(data-text);
     position: absolute;
-    inset: 1px;
+    inset: 2px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: #151E23;
-    border-radius: calc(0.375rem - 1px);
+    border-radius: 9999px;
     color: #F1FAEE;
     transition: all 0.3s ease;
   }
   
   .nav-button:hover::before {
-    background: #F1FAEE;
+    background: #FFE95B;
     color: #151E23;
   }
   

@@ -7,6 +7,8 @@ export default function Hero() {
   const [showAnimation, setShowAnimation] = useState(true)
   const [animationText, setAnimationText] = useState("Xpresso")
   const [showHero, setShowHero] = useState(false)
+  const [sloganFontFamily, setSloganFontFamily] = useState("var(--font-slogan), serif")
+  const [sloganFontWeight, setSloganFontWeight] = useState<number>(400)
 
   useEffect(() => {
     const sequence = [
@@ -31,9 +33,9 @@ export default function Hero() {
           } else {
             // Wait for animation to complete (~2s), then fade out and transition
             setTimeout(() => {
-              setShowAnimation(false)
+              setShowHero(true)
               setTimeout(() => {
-                setShowHero(true)
+                setShowAnimation(false)
               }, 300)
             }, 500)
           }
@@ -49,6 +51,46 @@ export default function Hero() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!showHero) return
+
+    const fonts = [
+      { family: "var(--font-playfair), serif", weight: 400 },
+      { family: "var(--font-bowlby), system-ui", weight: 400 },
+      { family: '"Playwrite NG Modern", cursive', weight: 300 },
+      { family: "var(--font-cherry-bomb-one), system-ui", weight: 400 },
+      { family: "var(--font-limelight), serif", weight: 400 },
+      { family: "var(--font-monsieur-la-doulaise), cursive", weight: 400 },
+    ]
+
+    const loops = 3
+    const stepMs = 1000
+    const totalSteps = fonts.length * loops
+    let step = 0
+
+    setSloganFontFamily(fonts[0].family)
+    setSloganFontWeight(fonts[0].weight)
+
+    const interval = setInterval(() => {
+      step++
+
+      if (step >= totalSteps) {
+        clearInterval(interval)
+        setSloganFontFamily("var(--font-slogan), serif")
+        setSloganFontWeight(500)
+        return
+      }
+
+      const next = fonts[step % fonts.length]
+      setSloganFontFamily(next.family)
+      setSloganFontWeight(next.weight)
+    }, stepMs)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [showHero])
+
   return (
     <>
       {/* Animation Section */}
@@ -60,7 +102,14 @@ export default function Hero() {
               animation: "growAndFade 2000ms ease-out forwards",
             }}
           >
-            <h1 className="text-6xl font-bold text-accent md:text-8xl lg:text-9xl">
+            <h1
+              className="font-bold leading-none text-accent"
+              style={{
+                fontFamily: "var(--font-playfair), serif",
+                fontSize: "clamp(4.5rem, 18vw, 18rem)",
+                lineHeight: 0.85,
+              }}
+            >
               {animationText}
             </h1>
           </div>
@@ -72,7 +121,10 @@ export default function Hero() {
         <section className="flex min-h-screen flex-col items-center justify-center gap-12 py-20 md:flex-row md:py-32">
           {/* Left Side - 60% */}
           <div className="w-full md:w-[60%]">
-            <h2 className="text-4xl font-bold leading-tight md:text-5xl lg:text-6xl" style={{ fontFamily: 'var(--font-playfair), serif', color: '#F1FAEE' }}>
+            <h2
+              className="text-4xl font-bold leading-tight md:text-5xl lg:text-6xl"
+              style={{ fontFamily: sloganFontFamily, color: "#F1FAEE", fontWeight: sloganFontWeight }}
+            >
               Make a video in the time it takes to make an{" "}
               <span className="text-accent">Xpresso</span>
             </h2>
@@ -82,7 +134,7 @@ export default function Hero() {
           <div className="flex w-full items-center justify-center md:w-[40%]">
             <Link href="/editor">
               <button
-                className="group relative flex h-32 w-32 items-center justify-center transition-all duration-300 hover:scale-110 md:h-40 md:w-40"
+                className="group relative flex h-[clamp(180px,15vw,360px)] w-[clamp(180px,15vw,360px)] items-center justify-center transition-all duration-300 hover:scale-110"
                 aria-label="Play video"
               >
                 {/* Triangle Play Button - Blue background by default, fills with banana cream on hover */}
@@ -94,7 +146,7 @@ export default function Hero() {
                   xmlns="http://www.w3.org/2000/svg"
                 >
                   <path
-                    d="M15 15 L15 85 L80 50 Z"
+                    d="M32 24 Q32 20 36 22 L78 46 Q82 48 82 50 Q82 52 78 54 L36 78 Q32 80 32 76 Z"
                     fill="#A8DADC"
                     className="transition-all duration-500 group-hover:fill-[#FFE95B]"
                   />

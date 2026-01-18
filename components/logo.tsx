@@ -18,10 +18,10 @@ export default function Logo() {
 
   // SVG Logo (matches the description: clapboard icon + Xpresso text)
   return (
-    <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+    <Link href="/" className="flex items-center gap-4 hover:opacity-90 transition-opacity">
       <svg
-        width="48"
-        height="40"
+        width="56"
+        height="48"
         viewBox="0 0 48 40"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
@@ -46,7 +46,7 @@ export default function Logo() {
       
       {/* Xpresso Text - Stylized serif font */}
       <span 
-        className="text-2xl font-bold text-accent tracking-tight"
+        className="text-3xl font-bold text-accent tracking-tight md:text-4xl"
         style={{
           fontFamily: 'var(--font-playfair), serif',
           letterSpacing: '-0.01em',
