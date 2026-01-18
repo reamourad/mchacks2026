@@ -10,6 +10,7 @@ import {
 } from "next/font/google"
 import "./globals.css"
 import Navbar from "@/components/navbar"
+import { Providers } from "@/components/providers"
 
 const inter = Inter({ subsets: ["latin"] })
 const playfair = Playfair_Display({ 
@@ -65,11 +66,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+<<<<<<< HEAD
       <body
         className={`${inter.className} ${playfair.variable} ${sloganFont.variable} ${bowlby.variable} ${cherryBombOne.variable} ${limelight.variable} ${monsieurLaDoulaise.variable}`}
       >
         <Navbar />
         {children}
+=======
+      <body className={`${inter.className} ${playfair.variable}`}>
+        <Providers>
+          <Navbar />
+          {children}
+        </Providers>
+>>>>>>> ac64935ffdba84152be2d01871bd5a329fe070bf
       </body>
     </html>
   )
