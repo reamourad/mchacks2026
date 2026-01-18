@@ -1,135 +1,270 @@
 import os
+from dotenv import load_dotenv
 import asyncio
 import httpx
-import json
-import time
+from typing import Callable
+
+# Load environment variables from .env.local in the parent directory
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env.local')
+load_dotenv(dotenv_path=dotenv_path)
 
 # Creatomate API configuration
 CREATOMATE_API_KEY = os.environ.get('CREATOMATE_API_KEY')
 CREATOMATE_API_URL = "https://api.creatomate.com/v1/renders"
-CREATOMATE_TEMPLATE_ID = os.environ.get('CREATOMATE_TEMPLATE_ID')
 
 if not CREATOMATE_API_KEY:
     raise ValueError("CREATOMATE_API_KEY environment variable not set.")
-if not CREATOMATE_TEMPLATE_ID:
-    raise ValueError("CREATOMATE_TEMPLATE_ID environment variable not set. Please create a basic video template in Creatomate.")
 
 
-async def process_video_with_creatomate(matches: list[dict], username: str, project_name: str, source_s3_urls: dict[str, str]) -> str:
+def parse_timestamp(timestamp_str: str) -> tuple[float, float]:
     """
-    Processes video clips (trimming and concatenation) using the Creatomate API.
-    Returns the final video URL.
+    Parse timestamp string in format "MM:SS-MM:SS" or "S-S" to (start_seconds, end_seconds).
     """
-    print(f"Processing video with Creatomate for {username}/{project_name} with {len(matches)} matches.")
+    start_str, end_str = timestamp_str.split('-')
 
+    def to_seconds(time_str: str) -> float:
+        parts = time_str.strip().split(':')
+        if len(parts) == 3:  # HH:MM:SS
+            return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+        elif len(parts) == 2:  # MM:SS
+            return float(parts[0]) * 60 + float(parts[1])
+        else:  # Just seconds
+            return float(parts[0])
+
+    return to_seconds(start_str), to_seconds(end_str)
+
+
+async def wait_for_render_complete(render_id: str, timeout: int = 600):
+    """Polls a Creatomate render until it's complete."""
+    print(f"Waiting for render {render_id} to complete...")
+
+    headers = {
+        "Authorization": f"Bearer {CREATOMATE_API_KEY}",
+    }
+
+    async with httpx.AsyncClient() as client:
+        max_polls = timeout // 5
+        for i in range(max_polls):
+            try:
+                response = await client.get(
+                    f"{CREATOMATE_API_URL}/{render_id}",
+                    headers=headers,
+                    timeout=30
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                status = data.get("status")
+                progress = data.get("progress", 0)
+
+                if status == "succeeded":
+                    url = data.get("url")
+                    print(f"Render {render_id} completed successfully: {url}")
+                    return url
+                elif status == "failed":
+                    error = data.get("error_message", "Unknown error")
+                    raise Exception(f"Render {render_id} failed: {error}")
+
+                print(f"Render status: {status}, Progress: {progress}%")
+                await asyncio.sleep(5)
+
+            except httpx.HTTPError as e:
+                print(f"HTTP error while checking render status: {e}")
+                await asyncio.sleep(5)
+
+        raise Exception(f"Render {render_id} did not complete in time.")
+
+
+async def create_video_from_matches(matches: list[dict], get_s3_url_func: Callable) -> str:
+    """
+    Creates a final video from matches using Creatomate API.
+    Each match should have: matched_clip (S3 key) and clip_timestamp (start-end format).
+    Returns the URL of the rendered video from Creatomate.
+
+    This function CUTS the videos at the specified timestamps and concatenates them.
+    """
     if not matches:
-        raise ValueError("No matches provided for Creatomate processing.")
+        raise ValueError("No matches provided")
 
-    # Prepare video elements for Creatomate API
-    creatomate_elements = []
+    print(f"Creating video from {len(matches)} matches using Creatomate...")
+
+    # Build the Creatomate composition with video elements
+    elements = []
+    current_time = 0  # Track position in timeline
+
     for i, match in enumerate(matches):
         s3_key = match.get("matched_clip")
         clip_timestamp = match.get("clip_timestamp")
-        
+
         if not s3_key or not clip_timestamp:
-            print(f"Warning: Match {i} missing required fields, skipping.")
+            print(f"Warning: Match {i} missing s3_key or timestamp, skipping.")
             continue
 
-        s3_url = source_s3_urls.get(s3_key)
-        if not s3_url:
-            print(f"Warning: S3 URL not found for {s3_key}, skipping match {i}.")
-            continue
+        # Get the S3 URL for the source video
+        video_url = get_s3_url_func(s3_key)
 
-        start_time_str, end_time_str = clip_timestamp.split('-')
-        start_time_parts = [float(p) for p in start_time_str.split(':')]
-        end_time_parts = [float(p) for p in end_time_str.split(':')]
+        # Parse timestamp (format: "start-end" or "MM:SS-MM:SS")
+        try:
+            start_time, end_time = parse_timestamp(clip_timestamp)
+            duration = end_time - start_time
 
-        trim_start = (start_time_parts[0] * 3600 if len(start_time_parts) == 3 else start_time_parts[0] * 60) + \
-                     (start_time_parts[1] if len(start_time_parts) >= 2 else 0) + \
-                     (start_time_parts[2] if len(start_time_parts) == 3 else 0)
+            if duration <= 0:
+                print(f"Warning: Match {i} has invalid duration, skipping.")
+                continue
 
-        trim_end = (end_time_parts[0] * 3600 if len(end_time_parts) == 3 else end_time_parts[0] * 60) + \
-                   (end_time_parts[1] if len(end_time_parts) >= 2 else 0) + \
-                   (end_time_parts[2] if len(end_time_parts) == 3 else 0)
-        
-        trim_duration = trim_end - trim_start
+            print(f"Adding clip {i+1}: {s3_key} from {start_time}s to {end_time}s (duration: {duration}s)")
 
-        creatomate_elements.append({
-            "type": "video",
-            "track": 1,  # All videos on the same track will be concatenated
-            "source": s3_url,
-            "trim_start": trim_start,
-            "trim_duration": trim_duration,
-            "output_format": "mp4",
-        })
-    
-    if not creatomate_elements:
-        raise ValueError("No valid Creatomate elements could be generated from matches.")
-
-    # Construct the Creatomate render request payload
-    payload = {
-        "template_id": CREATOMATE_TEMPLATE_ID,
-        "modifications": [
-            {
-                "elements": creatomate_elements,
+            # Create a video element with trim settings
+            element = {
+                "type": "video",
+                "source": video_url,
+                "trim_start": start_time,
+                "trim_duration": duration,
+                "time": current_time,  # Position in final video timeline
             }
-        ],
+
+            elements.append(element)
+            current_time += duration  # Move timeline forward
+
+        except Exception as e:
+            print(f"Warning: Failed to parse timestamp for match {i}: {e}, skipping.")
+            continue
+
+    if not elements:
+        raise ValueError("No valid clips to process")
+
+    # Calculate total duration for composition
+    total_duration = current_time
+
+    # Create the Creatomate template JSON (no template_id needed)
+    template = {
         "output_format": "mp4",
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": 30,
+        "duration": total_duration,
+        "elements": elements
     }
+
+    print(f"Submitting render request to Creatomate with {len(elements)} clips (total duration: {total_duration}s)...")
+
+    # Submit the render request
+    headers = {
+        "Authorization": f"Bearer {CREATOMATE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                CREATOMATE_API_URL,
+                headers=headers,
+                json=template,
+                timeout=30
+            )
+            response.raise_for_status()
+            result = response.json()
+        except httpx.HTTPStatusError as e:
+            print(f"Creatomate API error: {e.response.status_code} {e.response.text}")
+            raise Exception(f"Creatomate API error: {e.response.status_code} {e.response.text}")
+
+    render_id = result.get("id")
+    if not render_id:
+        raise Exception("No render ID returned from Creatomate")
+
+    print(f"Render submitted successfully. ID: {render_id}")
+
+    # Wait for the render to complete and get the video URL
+    video_url = await wait_for_render_complete(render_id, timeout=600)
+
+    print(f"Video rendered successfully: {video_url}")
+    return video_url
+
+
+async def create_merged_video(video_clips: list[dict]) -> str:
+    """
+    Alternative function to merge video clips using Creatomate.
+    video_clips should be a list of dicts with 'url', 'start_time', 'end_time'.
+    Returns the URL of the rendered video from Creatomate.
+    """
+    if not video_clips:
+        raise ValueError("No video clips provided")
+
+    print(f"Merging {len(video_clips)} clips using Creatomate...")
+
+    elements = []
+    current_time = 0
+
+    for i, clip in enumerate(video_clips):
+        url = clip.get("url")
+        start_time = clip.get("start_time", 0)
+        end_time = clip.get("end_time")
+
+        if not url:
+            print(f"Warning: Clip {i} missing URL, skipping.")
+            continue
+
+        element = {
+            "type": "video",
+            "source": url,
+            "time": current_time,
+        }
+
+        if start_time > 0:
+            element["trim_start"] = start_time
+
+        if end_time is not None:
+            duration = end_time - start_time
+            element["trim_duration"] = duration
+            current_time += duration
+            print(f"Added clip {i+1}: {url[:50]}... (start: {start_time}s, duration: {duration}s)")
+        else:
+            # If no end_time, Creatomate will use the full video duration
+            print(f"Added clip {i+1}: {url[:50]}... (full duration from {start_time}s)")
+            # Can't calculate current_time precisely without duration, set arbitrary value
+            current_time += 10  # Placeholder
+
+        elements.append(element)
+
+    if not elements:
+        raise ValueError("No valid clips to merge")
+
+    template = {
+        "output_format": "mp4",
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": 30,
+        "elements": elements
+    }
+
+    print(f"Submitting merge request to Creatomate with {len(elements)} clips...")
 
     headers = {
         "Authorization": f"Bearer {CREATOMATE_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    render_id = None
-    try:
-        async with httpx.AsyncClient() as client:
-            # 1. Send render request
-            print("Sending render request to Creatomate...")
-            response = await client.post(CREATOMATE_API_URL, headers=headers, json=payload, timeout=300)
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                CREATOMATE_API_URL,
+                headers=headers,
+                json=template,
+                timeout=30
+            )
             response.raise_for_status()
-            render_data = response.json()
-            render_id = render_data.get('id')
-            render_status = render_data.get('status')
-            final_video_url = render_data.get('url')
+            result = response.json()
+        except httpx.HTTPStatusError as e:
+            print(f"Creatomate API error: {e.response.status_code} {e.response.text}")
+            raise Exception(f"Creatomate API error: {e.response.status_code} {e.response.text}")
 
-            print(f"Creatomate render initiated. Render ID: {render_id}, Status: {render_status}")
+    render_id = result.get("id")
+    if not render_id:
+        raise Exception("No render ID returned from Creatomate")
 
-            # 2. Poll for render status
-            if render_id:
-                status_url = f"{CREATOMATE_API_URL}/{render_id}"
-                max_polls = 60  # Poll for up to 5 minutes (60 * 5 seconds)
-                for i in range(max_polls):
-                    await asyncio.sleep(5)
-                    status_response = await client.get(status_url, headers=headers)
-                    status_response.raise_for_status()
-                    status_data = status_response.json()
-                    current_status = status_data.get('status')
-                    progress = status_data.get('progress', 0)
-                    final_video_url = status_data.get('url') # Update URL in case it becomes available later
+    print(f"Merge submitted successfully. ID: {render_id}")
 
-                    print(f"Polling Creatomate render {render_id}. Status: {current_status}, Progress: {progress}%")
+    video_url = await wait_for_render_complete(render_id, timeout=600)
 
-                    if current_status == 'succeeded':
-                        print(f"Creatomate render succeeded! Final URL: {final_video_url}")
-                        return final_video_url
-                    elif current_status == 'failed':
-                        raise Exception(f"Creatomate render failed. Details: {status_data.get('errors')}")
-            else:
-                raise Exception("Creatomate render ID not returned in initial response.")
-
-            raise Exception("Creatomate render timed out.")
-
-    except httpx.HTTPStatusError as e:
-        print(f"Creatomate API error: {e.response.status_code} {e.response.text}")
-        raise Exception(f"Creatomate API error: {e.response.status_code} {e.response.text}")
-    except Exception as e:
-        print(f"Error processing video with Creatomate: {e}")
-        raise
-
-# Existing (now unused) MoviePy/FFmpeg functions - kept for reference if needed
-# def cut_clip(input_path: str, output_path: str, start_time: float, end_time: float):
-#     pass
-# def assemble_video(clip_paths: list[str], output_path: str, temp_dir: str):
-#     pass
+    print(f"Video merged successfully: {video_url}")
+    return video_url

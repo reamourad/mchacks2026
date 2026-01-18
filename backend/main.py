@@ -13,8 +13,8 @@ from db import (
     update_project_status,
     update_project_completed,
 )
-from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key
-from video_processing import process_video_with_creatomate
+from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key, get_s3_url
+from video_processing import create_video_from_matches, create_merged_video
 from gumloop import start_gumloop_pipeline, get_gumloop_results, parse_timestamp
 
 
@@ -81,38 +81,70 @@ async def get_run_results_endpoint(run_id: str):
 
 
 @app.post("/create_video")
-async def create_video_from_matches(request: CreateVideoRequest):
+async def create_video_endpoint(request: CreateVideoRequest):
     """
-    Creates a final video from Gumloop matches using the Creatomate API.
+    Creates a final video from Gumloop matches using Creatomate for processing.
     """
-    # Assuming the original S3 URLs are needed by Creatomate
-    # For now, we're just mapping the matched_clip names to dummy S3 URLs for demonstration.
-    # In a real scenario, you'd fetch the actual S3 URLs associated with these clip names.
-    source_s3_urls = {match["matched_clip"]: f"https://your-s3-bucket.s3.amazonaws.com/{match['matched_clip']}"
-                      for match in request.matches if "matched_clip" in match}
-
     try:
-        # Process video with Creatomate
-        final_video_url = await process_video_with_creatomate(
-            request.matches,
-            request.username,
-            request.projectName,
-            source_s3_urls
-        )
+        print(f"Creating video for {request.username}/{request.projectName} with {len(request.matches)} matches using Creatomate.")
 
-        print(f"Video created successfully by Creatomate: {final_video_url}")
+        # Use Creatomate to cut and merge clips
+        creatomate_url = await create_video_from_matches(request.matches, get_s3_url)
+
+        print(f"Creatomate render complete: {creatomate_url}")
+
+        # Download from Creatomate and re-upload to our S3
+        temp_dir = tempfile.mkdtemp(prefix=f"xpresso-{request.username}-{request.projectName}-")
+        try:
+            local_video_path = os.path.join(temp_dir, "final_video.mp4")
+
+            print(f"Downloading rendered video from Creatomate...")
+            async with httpx.AsyncClient(timeout=300) as client:
+                async with client.stream("GET", creatomate_url, follow_redirects=True) as response:
+                    response.raise_for_status()
+                    with open(local_video_path, "wb") as f:
+                        async for chunk in response.aiter_bytes():
+                            f.write(chunk)
+
+            print(f"Uploading to S3...")
+            final_s3_key = generate_final_video_key(request.username, request.projectName)
+            final_video_url = upload_file_to_s3(local_video_path, final_s3_key)
+
+            print(f"Video created successfully: {final_video_url}")
+
+            return {
+                "success": True,
+                "videoUrl": final_video_url,
+                "s3Key": final_s3_key,
+                "clipsProcessed": len(request.matches),
+                "creatomateUrl": creatomate_url,  # Also return this in case S3 upload fails
+            }
+        finally:
+            print(f"Cleaning up temp directory: {temp_dir}")
+            shutil.rmtree(temp_dir)
+
+    except Exception as e:
+        print(f"Error creating video with Creatomate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/create_video_direct")
+async def create_video_direct_endpoint(request: CreateVideoRequest):
+    """
+    Creates a final video and returns the Creatomate URL directly (without S3 re-upload).
+    Useful for faster response when S3 storage isn't needed.
+    """
+    try:
+        print(f"Creating video for {request.username}/{request.projectName} with {len(request.matches)} matches.")
+
+        creatomate_url = await create_video_from_matches(request.matches, get_s3_url)
 
         return {
             "success": True,
-            "videoUrl": final_video_url,
-            # Creatomate directly provides the final URL, S3 key might not be applicable here
-            # or would be part of Creatomate's internal storage.
-            "s3Key": None, 
+            "videoUrl": creatomate_url,
             "clipsProcessed": len(request.matches),
         }
 
     except Exception as e:
         print(f"Error creating video with Creatomate: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-# Removed process_video_task and find_clip_s3_key as they are no longer used.
