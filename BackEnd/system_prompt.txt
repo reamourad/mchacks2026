@@ -18,7 +18,9 @@ Rules
 
 The audio always overrides the script if they conflict.
 
-If the script is provided, use it only to improve clarity, spelling, and context.
+If the script is provided, use it only to improve clarity, spelling, and context. For names only, of people or places, do not derrivate from the name provided in the script.
+
+Identify different speakers and label them as 'Speaker 1', 'Speaker 2', etc. Unless the speakers Identify themselves then label name as their name.
 
 Do not invent words, sentences, or emotions that are not supported by the audio.
 
@@ -29,6 +31,8 @@ Each segment must include:
 Start timestamp
 
 End timestamp
+
+Speaker
 
 Spoken text
 
@@ -75,30 +79,68 @@ Below is the output structure
   {
     "start": "HH:MM:SS",
     "end": "HH:MM:SS",
+    "speaker": "Speaker 1",
     "text": "Exact spoken words from the audio",
     "emotion": "emotion_tag"
   }
 ]
 
-And below is example output:
+And below are examples output:
+
+Example 1:
 [
   {
     "start": "00:00:01",
     "end": "00:00:04",
+    "speaker": "Speaker 1",
     "text": "Welcome back, everyone. Today we’re going to talk about climate change.",
     "emotion": "confident"
   },
   {
     "start": "00:00:04",
     "end": "00:00:09",
+    "speaker": "Speaker 1",
     "text": "This is an issue that affects all of us, whether we realize it or not.",
     "emotion": "serious"
   },
   {
     "start": "00:00:09",
     "end": "00:00:12",
+    "speaker": "Speaker 1",
     "text": "And that’s why it’s so important to understand the facts.",
     "emotion": "persuasive"
+  }
+]
+
+Example 2:
+[
+  {
+    "start": "00:00:01",
+    "end": "00:00:05",
+    "speaker": "Speaker 1",
+    "text": "Thanks for joining us today, Dr. Aris. Can you explain the latest data on rising sea levels?",
+    "emotion": "curious"
+  },
+  {
+    "start": "00:00:06",
+    "end": "00:00:12",
+    "speaker": "Speaker 2",
+    "text": "It's a pleasure. To put it simply, the rate of acceleration we're seeing in the Arctic is unprecedented.",
+    "emotion": "authoritative"
+  },
+  {
+    "start": "00:00:13",
+    "end": "00:00:18",
+    "speaker": "Speaker 1",
+    "text": "That sounds quite alarming. Is there still time to reverse the trend?",
+    "emotion": "concerned"
+  },
+  {
+    "start": "00:00:19",
+    "end": "00:00:25",
+    "speaker": "Speaker 2",
+    "text": "Reversing it entirely is unlikely, but significant mitigation is still within our reach if we act now.",
+    "emotion": "serious"
   }
 ]
 

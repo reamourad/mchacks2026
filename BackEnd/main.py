@@ -46,4 +46,13 @@ if __name__ == "__main__":
         temperature=0.0,
         )
 
-    transcribe_audio(audio,config)
+    # transcribe_audio(audio,config)
+
+    script_path = "./BackEnd/voice_script.txt"
+    voice_w_script = "./BackEnd/voice.m4a"
+
+    # transcribe_audio(voice_w_script,config, script_path)
+
+    voice_2_speakers = "./BackEnd/voice_2_speakers.m4a"
+
+    transcribe_audio(voice_2_speakers,config)
