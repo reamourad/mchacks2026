@@ -33,24 +33,25 @@ async def wait_for_asset_ready(asset_id: str, timeout: int = 300):
         await asyncio.sleep(5)
     raise Exception(f"Asset {asset_id} did not become ready in time.")
 
-async def upload_to_mux(file_path: str) -> str:
-    """Uploads a local file to Mux and returns the new asset's ID."""
-    # 1. Create an upload URL
-    create_upload_request = mux_python.CreateUploadRequest(
-        cors_origin='*',
-        new_asset_settings=mux_python.CreateAssetRequest(
-            playback_policy=[mux_python.PlaybackPolicy.PUBLIC]
-        )
+async def upload_to_mux(file_url: str) -> str:
+    """
+    Creates a Mux asset from a URL.
+    The file should already be uploaded to S3 and accessible via URL.
+    """
+    print(f"Creating Mux asset from URL: {file_url}")
+
+    # Create asset from URL
+    create_asset_request = mux_python.CreateAssetRequest(
+        input=[mux_python.InputSettings(url=file_url)],
+        playback_policy=[mux_python.PlaybackPolicy.PUBLIC]
     )
-    upload_response = uploads_api.create_direct_upload(create_upload_request)
-    
-    # 2. Upload the file
-    async with httpx.AsyncClient() as client:
-        with open(file_path, 'rb') as f:
-            await client.put(upload_response.data.url, content=f.read(), timeout=300)
-    
-    asset_id = upload_response.data.asset_id
+
+    asset_response = assets_api.create_asset(create_asset_request)
+    asset_id = asset_response.data.id
+
+    print(f"Asset created: {asset_id}, waiting for it to be ready...")
     await wait_for_asset_ready(asset_id)
+
     return asset_id
 
 async def cut_clip_with_mux(source_asset_id: str, start_time: float, end_time: float) -> str:

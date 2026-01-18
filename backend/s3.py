@@ -58,3 +58,9 @@ def upload_file_to_s3(local_path: str, s3_key: str) -> str:
 
 def generate_final_video_key(username: str, project_name: str) -> str:
     return f"users/{username}/{project_name}/final-video.mp4"
+
+def get_s3_url(s3_key: str) -> str:
+    """
+    Get the public URL for an S3 object
+    """
+    return f"https://{AWS_S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{s3_key}"

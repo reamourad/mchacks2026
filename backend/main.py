@@ -13,7 +13,7 @@ from db import (
     update_project_status,
     update_project_completed,
 )
-from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key
+from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key, get_s3_url
 from video_processing import upload_to_mux, cut_clip_with_mux, assemble_video
 from gumloop import start_gumloop_pipeline, get_gumloop_results, parse_timestamp
 
@@ -99,13 +99,13 @@ async def create_video_from_matches(request: CreateVideoRequest):
             
             if s3_key not in source_mux_assets:
                 print(f"Processing source video: {s3_key}")
-                local_path = os.path.join(temp_dir, f"source_{s3_key}")
-                
-                print(f"  Downloading from S3...")
-                download_from_s3(s3_key, local_path)
-                
-                print(f"  Uploading to Mux...")
-                asset_id = await upload_to_mux(local_path)
+
+                # Get S3 URL for the video
+                s3_url = get_s3_url(s3_key)
+                print(f"  S3 URL: {s3_url}")
+
+                print(f"  Creating Mux asset from S3 URL...")
+                asset_id = await upload_to_mux(s3_url)
                 source_mux_assets[s3_key] = asset_id
                 print(f"  -> Mux Asset ID: {asset_id}")
 
