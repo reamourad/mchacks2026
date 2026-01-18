@@ -39,51 +39,52 @@ def cut_clip(input_path: str, output_path: str, start_time: float, end_time: flo
 def assemble_video(clip_paths: list[str], output_path: str):
     """
     Concatenate multiple video clips into one video
+    IMPORTANT: Always re-encodes to ensure compatibility across all segments
     """
     if not clip_paths:
         raise ValueError("No clips to assemble")
 
+    print(f"Assembling {len(clip_paths)} clips:")
+    for i, p in enumerate(clip_paths, 1):
+        print(f"  Clip {i}: {p}")
+
     # Create a temporary file list for FFmpeg concat
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt") as temp_file:
         for p in clip_paths:
-            temp_file.write(f"file '{os.path.abspath(p)}'\n")
+            abs_path = os.path.abspath(p)
+            temp_file.write(f"file '{abs_path}'\n")
+            # Verify file exists and has size
+            if not os.path.exists(abs_path):
+                raise ValueError(f"Clip file does not exist: {abs_path}")
+            file_size = os.path.getsize(abs_path)
+            print(f"  - {os.path.basename(abs_path)}: {file_size} bytes")
         list_file_path = temp_file.name
 
-    try:
-        # Try stream copy first for fast concatenation (no re-encoding)
-        try:
-            print("Attempting concat with stream copy...")
-            (
-                ffmpeg
-                .input(list_file_path, format='concat', safe=0)
-                .output(output_path, c='copy')
-                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-            )
-            print(f"Video assembled successfully with stream copy: {output_path}")
-        except ffmpeg.Error as e:
-            print('Stream copy concat failed, trying with re-encode...')
-            print('stdout:', e.stdout.decode('utf8'))
-            print('stderr:', e.stderr.decode('utf8'))
+    print(f"Concat list file: {list_file_path}")
 
-            # Fallback: re-encode to ensure all clips are compatible
-            # This normalizes codec, resolution, and frame rate
-            (
-                ffmpeg
-                .input(list_file_path, format='concat', safe=0)
-                .output(
-                    output_path,
-                    vcodec='libx264',
-                    acodec='aac',
-                    preset='medium',
-                    crf=23,
-                    pix_fmt='yuv420p',
-                    **{'movflags': '+faststart'}  # Optimize for streaming
-                )
-                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+    try:
+        # Always re-encode to ensure all clips are compatible
+        # This normalizes codec, resolution, frame rate, and ensures proper concatenation
+        print("Concatenating with re-encode (ensures compatibility)...")
+        (
+            ffmpeg
+            .input(list_file_path, format='concat', safe=0)
+            .output(
+                output_path,
+                vcodec='libx264',
+                acodec='aac',
+                preset='medium',
+                crf=23,
+                pix_fmt='yuv420p',
+                **{'movflags': '+faststart'}  # Optimize for streaming
             )
-            print(f"Video assembled successfully with re-encode: {output_path}")
+            .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+        )
+
+        final_size = os.path.getsize(output_path)
+        print(f"Video assembled successfully: {output_path} ({final_size} bytes)")
     except ffmpeg.Error as e:
-        print('Final concat error:')
+        print('Concat error:')
         print('stdout:', e.stdout.decode('utf8'))
         print('stderr:', e.stderr.decode('utf8'))
         raise Exception("ffmpeg error (see stderr output for detail)")
