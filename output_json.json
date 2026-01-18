@@ -1,0 +1,23 @@
+[
+    {
+        "start": "00:00:00",
+        "end": "00:00:01",
+        "speaker": "Speaker 1",
+        "text": "Hello.",
+        "emotion": "urgent"
+    },
+    {
+        "start": "00:00:02",
+        "end": "00:00:04",
+        "speaker": "Speaker 1",
+        "text": "Um, in this recording,",
+        "emotion": "sad"
+    },
+    {
+        "start": "00:00:04",
+        "end": "00:00:10",
+        "speaker": "Speaker 1",
+        "text": "I will try to speak and finish this in 10 seconds.",
+        "emotion": "excited"
+    }
+]

@@ -1,0 +1,4 @@
+moviepy
+Pillow
+google-genai
+python-dotenv
