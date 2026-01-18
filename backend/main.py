@@ -1,29 +1,33 @@
 import os
 import tempfile
 import shutil
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from pydantic import BaseModel
-
-import os
-import tempfile
-import shutil
 import asyncio
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .db import (
+from db import (
     connect_to_mongo,
     close_mongo_connection,
     get_project,
     update_project_status,
     update_project_completed,
 )
-from .s3 import download_from_s3, upload_file_to_s3, generate_final_video_key
-from .video_processing import cut_clip, assemble_video
-from .gumloop import start_gumloop_pipeline, get_gumloop_results, parse_timestamp
+from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key
+from video_processing import cut_clip, assemble_video
+from gumloop import start_gumloop_pipeline, get_gumloop_results, parse_timestamp
 
 
 app = FastAPI()
+
+# Add CORS middleware to allow requests from Vercel frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with your Vercel domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def startup_event():

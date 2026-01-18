@@ -9,7 +9,9 @@
       "Bash(brew install:*)",
       "Bash(brew list:*)",
       "Bash(npm run build:*)",
-      "Bash(vercel whoami:*)"
+      "Bash(vercel whoami:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
