@@ -97,7 +97,7 @@ def assemble_video(clip_paths: list[str], output_path: str):
                 .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
             )
         else:
-            # Video only - use filter to explicitly select video stream and disable audio
+            # Video only - disable audio with 'an'
             (
                 ffmpeg
                 .input(list_file_path, format='concat', safe=0)
@@ -107,8 +107,8 @@ def assemble_video(clip_paths: list[str], output_path: str):
                     preset='medium',
                     crf=23,
                     pix_fmt='yuv420p',
-                    audio_bitrate=0,  # Disable audio
-                    **{'movflags': '+faststart', 'map': '0:v:0'}  # Only map video stream
+                    an=True,  # Disable audio
+                    **{'movflags': '+faststart'}
                 )
                 .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
             )
