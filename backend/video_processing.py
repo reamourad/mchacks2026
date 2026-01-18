@@ -67,15 +67,6 @@ def assemble_video(clip_paths: list[str], output_path: str):
         # This normalizes codec, resolution, frame rate, and ensures proper concatenation
         print("Concatenating with re-encode (ensures compatibility)...")
 
-        # Build output arguments - only encode audio if present
-        output_args = {
-            'vcodec': 'libx264',
-            'preset': 'medium',
-            'crf': 23,
-            'pix_fmt': 'yuv420p',
-            'movflags': '+faststart'
-        }
-
         # Check if first clip has audio
         has_audio = False
         try:
@@ -83,27 +74,42 @@ def assemble_video(clip_paths: list[str], output_path: str):
             has_audio = any(stream['codec_type'] == 'audio' for stream in probe['streams'])
             if has_audio:
                 print("Audio detected - encoding with AAC")
-                output_args['acodec'] = 'aac'
             else:
                 print("No audio detected - video only")
         except Exception as probe_error:
             print(f"Could not probe audio, assuming no audio: {probe_error}")
 
-        # Build the ffmpeg command
+        # Build FFmpeg command based on whether audio is present
         if has_audio:
+            # With audio - encode both video and audio
             (
                 ffmpeg
                 .input(list_file_path, format='concat', safe=0)
-                .output(output_path, **output_args)
+                .output(
+                    output_path,
+                    vcodec='libx264',
+                    acodec='aac',
+                    preset='medium',
+                    crf=23,
+                    pix_fmt='yuv420p',
+                    **{'movflags': '+faststart'}
+                )
                 .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
             )
         else:
-            # Video only - explicitly disable audio
+            # Video only - use filter to explicitly select video stream and disable audio
             (
                 ffmpeg
                 .input(list_file_path, format='concat', safe=0)
-                .output(output_path, **output_args)
-                .global_args('-an')  # No audio
+                .output(
+                    output_path,
+                    vcodec='libx264',
+                    preset='medium',
+                    crf=23,
+                    pix_fmt='yuv420p',
+                    audio_bitrate=0,  # Disable audio
+                    **{'movflags': '+faststart', 'map': '0:v:0'}  # Only map video stream
+                )
                 .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
             )
 
