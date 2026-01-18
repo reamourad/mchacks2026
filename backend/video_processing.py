@@ -77,6 +77,7 @@ def assemble_video(clip_paths: list[str], output_path: str):
         }
 
         # Check if first clip has audio
+        has_audio = False
         try:
             probe = ffmpeg.probe(clip_paths[0])
             has_audio = any(stream['codec_type'] == 'audio' for stream in probe['streams'])
@@ -85,17 +86,26 @@ def assemble_video(clip_paths: list[str], output_path: str):
                 output_args['acodec'] = 'aac'
             else:
                 print("No audio detected - video only")
-                output_args['an'] = None  # No audio
         except Exception as probe_error:
             print(f"Could not probe audio, assuming no audio: {probe_error}")
-            output_args['an'] = None
 
-        (
-            ffmpeg
-            .input(list_file_path, format='concat', safe=0)
-            .output(output_path, **output_args)
-            .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-        )
+        # Build the ffmpeg command
+        if has_audio:
+            (
+                ffmpeg
+                .input(list_file_path, format='concat', safe=0)
+                .output(output_path, **output_args)
+                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+            )
+        else:
+            # Video only - explicitly disable audio
+            (
+                ffmpeg
+                .input(list_file_path, format='concat', safe=0)
+                .output(output_path, **output_args)
+                .global_args('-an')  # No audio
+                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+            )
 
         final_size = os.path.getsize(output_path)
         print(f"Video assembled successfully: {output_path} ({final_size} bytes)")
