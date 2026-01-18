@@ -9,6 +9,7 @@ export default function Hero() {
   const [showHero, setShowHero] = useState(false)
   const [sloganFontFamily, setSloganFontFamily] = useState("var(--font-slogan), serif")
   const [sloganFontWeight, setSloganFontWeight] = useState<number>(400)
+  const heroBgUrl = process.env.NEXT_PUBLIC_HERO_BG_URL || "/hero-bg.png"
 
   useEffect(() => {
     const sequence = [
@@ -118,41 +119,51 @@ export default function Hero() {
 
       {/* Hero Section */}
       {showHero && (
-        <section className="flex min-h-screen flex-col items-center justify-center gap-12 py-20 md:flex-row md:py-32">
-          {/* Left Side - 60% */}
-          <div className="w-full md:w-[60%]">
-            <h2
-              className="text-4xl font-bold leading-tight md:text-5xl lg:text-6xl"
-              style={{ fontFamily: sloganFontFamily, color: "#F1FAEE", fontWeight: sloganFontWeight }}
-            >
-              Make a video in the time it takes to make an{" "}
-              <span className="text-accent">Xpresso</span>
-            </h2>
-          </div>
-
-          {/* Right Side - 40% */}
-          <div className="flex w-full items-center justify-center md:w-[40%]">
-            <Link href="/editor">
-              <button
-                className="group relative flex h-[clamp(180px,15vw,360px)] w-[clamp(180px,15vw,360px)] items-center justify-center transition-all duration-300 hover:scale-110"
-                aria-label="Play video"
+        <section
+          className="relative left-1/2 w-screen -translate-x-1/2 overflow-hidden -mt-16 pt-16 py-20 md:-mt-20 md:pt-20 md:py-32"
+          style={{
+            backgroundImage: `url(${heroBgUrl})`,
+            backgroundSize: "auto",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "center",
+          }}
+        >
+          <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-center justify-center gap-12 px-6 md:flex-row md:px-12">
+            {/* Left Side - 60% */}
+            <div className="w-full md:w-[60%]">
+              <h2
+                className="text-4xl font-bold leading-tight md:text-5xl lg:text-6xl"
+                style={{ fontFamily: sloganFontFamily, color: "#F1FAEE", fontWeight: sloganFontWeight }}
               >
-                {/* Triangle Play Button - Blue background by default, fills with banana cream on hover */}
-                <svg
-                  className="play-triangle transition-all duration-500"
-                  width="100%"
-                  height="100%"
-                  viewBox="0 0 100 100"
-                  xmlns="http://www.w3.org/2000/svg"
+                Make a video in the time it takes to make an{" "}
+                <span className="text-accent">Xpresso</span>
+              </h2>
+            </div>
+
+            {/* Right Side - 40% */}
+            <div className="flex w-full items-center justify-center md:w-[40%]">
+              <Link href="/editor">
+                <button
+                  className="group relative flex h-[clamp(180px,15vw,360px)] w-[clamp(180px,15vw,360px)] items-center justify-center transition-all duration-300 hover:scale-110"
+                  aria-label="Play video"
                 >
-                  <path
-                    d="M32 24 Q32 20 36 22 L78 46 Q82 48 82 50 Q82 52 78 54 L36 78 Q32 80 32 76 Z"
-                    fill="#A8DADC"
-                    className="transition-all duration-500 group-hover:fill-[#FFE95B]"
-                  />
-                </svg>
-              </button>
-            </Link>
+                  {/* Triangle Play Button - Blue background by default, fills with banana cream on hover */}
+                  <svg
+                    className="play-triangle transition-all duration-500"
+                    width="100%"
+                    height="100%"
+                    viewBox="0 0 100 100"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M32 24 Q32 20 36 22 L78 46 Q82 48 82 50 Q82 52 78 54 L36 78 Q32 80 32 76 Z"
+                      fill="#A8DADC"
+                      className="transition-all duration-500 group-hover:fill-[#FFE95B]"
+                    />
+                  </svg>
+                </button>
+              </Link>
+            </div>
           </div>
         </section>
       )}
