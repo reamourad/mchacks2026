@@ -3,16 +3,16 @@ import {
   Bowlby_One_SC,
   Cherry_Bomb_One,
   Cormorant_Garamond,
-  Inter,
   Limelight,
   Monsieur_La_Doulaise,
   Playfair_Display,
+  Quicksand,
 } from "next/font/google"
 import "./globals.css"
 import Navbar from "@/components/navbar"
 import { Providers } from "@/components/providers"
 
-const inter = Inter({ subsets: ["latin"] })
+const quicksand = Quicksand({ subsets: ["latin"], display: "swap" })
 const playfair = Playfair_Display({ 
   subsets: ["latin"],
   variable: "--font-playfair",
@@ -66,9 +66,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} ${playfair.variable}`}>
-        <Navbar />
-        {children}
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Playwrite+NG+Modern:wght@300;400;500;600;700&display=swap"
+        />
+      </head>
+      <body
+        className={`${quicksand.className} ${playfair.variable} ${sloganFont.variable} ${bowlby.variable} ${cherryBombOne.variable} ${limelight.variable} ${monsieurLaDoulaise.variable}`}
+      >
+        <Providers>
+          <Navbar />
+          {children}
+        </Providers>
       </body>
     </html>
   )

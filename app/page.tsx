@@ -1,6 +1,8 @@
 import Hero from "@/components/landing/hero"
-import Features from "@/components/landing/features"
 import HowItWorks from "@/components/landing/how-it-works"
+import Pipeline from "@/components/landing/pipeline"
+import Contact from "@/components/landing/contact"
+import Footer from "@/components/landing/footer"
 import PageContainer from "@/components/page-container"
 
 export default function Home() {
@@ -9,8 +11,10 @@ export default function Home() {
       <PageContainer>
         <Hero />
         <HowItWorks />
-        <Features />
+        <Pipeline />
+        <Contact />
       </PageContainer>
+      <Footer />
     </main>
   )
 }
