@@ -50,15 +50,40 @@ def assemble_video(clip_paths: list[str], output_path: str):
         list_file_path = temp_file.name
 
     try:
-        # Use stream copy for fast concatenation (no re-encoding)
-        (
-            ffmpeg
-            .input(list_file_path, format='concat', safe=0)
-            .output(output_path, c='copy')
-            .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-        )
-        print(f"Video assembled successfully: {output_path}")
+        # Try stream copy first for fast concatenation (no re-encoding)
+        try:
+            print("Attempting concat with stream copy...")
+            (
+                ffmpeg
+                .input(list_file_path, format='concat', safe=0)
+                .output(output_path, c='copy')
+                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+            )
+            print(f"Video assembled successfully with stream copy: {output_path}")
+        except ffmpeg.Error as e:
+            print('Stream copy concat failed, trying with re-encode...')
+            print('stdout:', e.stdout.decode('utf8'))
+            print('stderr:', e.stderr.decode('utf8'))
+
+            # Fallback: re-encode to ensure all clips are compatible
+            # This normalizes codec, resolution, and frame rate
+            (
+                ffmpeg
+                .input(list_file_path, format='concat', safe=0)
+                .output(
+                    output_path,
+                    vcodec='libx264',
+                    acodec='aac',
+                    preset='medium',
+                    crf=23,
+                    pix_fmt='yuv420p',
+                    **{'movflags': '+faststart'}  # Optimize for streaming
+                )
+                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+            )
+            print(f"Video assembled successfully with re-encode: {output_path}")
     except ffmpeg.Error as e:
+        print('Final concat error:')
         print('stdout:', e.stdout.decode('utf8'))
         print('stderr:', e.stderr.decode('utf8'))
         raise Exception("ffmpeg error (see stderr output for detail)")

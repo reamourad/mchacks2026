@@ -193,6 +193,7 @@ async def create_video_from_matches(request: CreateVideoRequest):
 
         # 1. Download and cut clips based on matches
         cut_clip_paths = []
+        cut_clip_s3_urls = []  # Store URLs of uploaded cut clips for debugging
         downloaded_clips = {}  # Cache downloaded files to avoid duplicate downloads
 
         for i, match in enumerate(request.matches):
@@ -211,10 +212,12 @@ async def create_video_from_matches(request: CreateVideoRequest):
             # Download clip if not already downloaded
             if s3_key not in downloaded_clips:
                 local_path = os.path.join(temp_dir, f"source_{matched_clip_name}")
+                print(f"Downloading {s3_key} from S3...")
                 download_from_s3(s3_key, local_path)
                 downloaded_clips[s3_key] = local_path
             else:
                 local_path = downloaded_clips[s3_key]
+                print(f"Using cached {s3_key}")
 
             # Parse timestamp and cut clip
             times = parse_timestamp(clip_timestamp)
@@ -228,6 +231,18 @@ async def create_video_from_matches(request: CreateVideoRequest):
             cut_output_path = os.path.join(temp_dir, f"cut_segment_{i+1}.mp4")
             print(f"Cutting segment {i+1}: {matched_clip_name} from {start_time}s to {end_time}s")
             cut_clip(local_path, cut_output_path, start_time, end_time)
+
+            # Upload cut clip to S3 for debugging
+            cut_clip_s3_key = f"debug/{request.username}/{request.projectName}/segment_{i+1}_{start_time}-{end_time}.mp4"
+            print(f"Uploading cut segment {i+1} to S3: {cut_clip_s3_key}")
+            cut_clip_url = upload_file_to_s3(cut_output_path, cut_clip_s3_key)
+            cut_clip_s3_urls.append({
+                "segment": i+1,
+                "source": matched_clip_name,
+                "timestamp": clip_timestamp,
+                "url": cut_clip_url
+            })
+
             cut_clip_paths.append(cut_output_path)
 
         if not cut_clip_paths:
@@ -248,7 +263,8 @@ async def create_video_from_matches(request: CreateVideoRequest):
             "success": True,
             "videoUrl": final_video_url,
             "s3Key": final_s3_key,
-            "clipsProcessed": len(cut_clip_paths)
+            "clipsProcessed": len(cut_clip_paths),
+            "debugCutClips": cut_clip_s3_urls  # Individual cut clips for debugging
         }
 
     except Exception as e:
