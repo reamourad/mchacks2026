@@ -3,6 +3,8 @@ import asyncio
 import httpx
 import mux_python
 from mux_python.rest import ApiException
+from mux_python.api.assets_api import AssetsApi
+from mux_python.api.uploads_api import UploadsApi
 from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioClip
 import numpy as np
 import tempfile
@@ -13,8 +15,8 @@ configuration = mux_python.Configuration(
     password=os.environ.get('MUX_TOKEN_SECRET'),
 )
 api_client = mux_python.ApiClient(configuration)
-assets_api = mux_python.AssetsApi(api_client)
-uploads_api = mux_python.UploadsApi(api_client)
+assets_api = AssetsApi(api_client)
+uploads_api = UploadsApi(api_client)
 
 
 async def wait_for_asset_ready(asset_id: str, timeout: int = 300):
