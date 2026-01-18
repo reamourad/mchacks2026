@@ -14,8 +14,9 @@ from db import (
     update_project_completed,
 )
 from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key, get_s3_url
-from video_processing import create_video_from_matches, create_merged_video
+from video_processing import create_video_from_matches, create_merged_video, create_video_from_matches_local
 from gumloop import start_gumloop_pipeline, get_gumloop_results, parse_timestamp
+import httpx
 
 
 app = FastAPI()
@@ -148,3 +149,49 @@ async def create_video_direct_endpoint(request: CreateVideoRequest):
     except Exception as e:
         print(f"Error creating video with Creatomate: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/create_video_local")
+async def create_video_local_endpoint(request: CreateVideoRequest):
+    """
+    Creates a final video using local processing (moviepy + ffmpeg).
+    Downloads clips from S3, cuts them based on timestamps, and concatenates them.
+    Uploads the final video back to S3 and returns the URL.
+    """
+    temp_dir = None
+    try:
+        print(f"Creating video locally for {request.username}/{request.projectName} with {len(request.matches)} matches.")
+
+        # Create temp directory for processing
+        temp_dir = tempfile.mkdtemp(prefix=f"xpresso-local-{request.username}-{request.projectName}-")
+
+        # Process video locally
+        final_video_path = await create_video_from_matches_local(
+            request.matches,
+            download_from_s3,
+            temp_dir
+        )
+
+        # Upload to S3
+        print(f"Uploading final video to S3...")
+        final_s3_key = generate_final_video_key(request.username, request.projectName)
+        final_video_url = upload_file_to_s3(final_video_path, final_s3_key)
+
+        print(f"Video created successfully: {final_video_url}")
+
+        return {
+            "success": True,
+            "videoUrl": final_video_url,
+            "s3Key": final_s3_key,
+            "clipsProcessed": len(request.matches),
+        }
+
+    except Exception as e:
+        print(f"Error creating video locally: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # Clean up temp directory
+        if temp_dir and os.path.exists(temp_dir):
+            print(f"Cleaning up temp directory: {temp_dir}")
+            shutil.rmtree(temp_dir)

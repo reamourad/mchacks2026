@@ -2,7 +2,10 @@ import os
 from dotenv import load_dotenv
 import asyncio
 import httpx
+import subprocess
+import tempfile
 from typing import Callable
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 # Load environment variables from .env.local in the parent directory
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env.local')
@@ -268,3 +271,186 @@ async def create_merged_video(video_clips: list[dict]) -> str:
 
     print(f"Video merged successfully: {video_url}")
     return video_url
+
+
+def concatenate_clips(*clips, target_width=1080, target_height=1920):
+    """
+    Concatenates 2 or more video clips sequentially (start to finish).
+    Resizes all clips to the same target size for compatibility, then uses 'compose' method.
+
+    Args:
+        *clips: Variable number of VideoFileClip, TextClip, or other moviepy clips.
+        target_width: Target width for resizing (default 1080).
+        target_height: Target height for resizing (default 1920).
+
+    Returns:
+        A single concatenated video clip.
+    """
+    if len(clips) < 2:
+        raise ValueError("At least 2 clips are required for concatenation.")
+
+    # Resize all clips to target size
+    resized_clips = []
+    for clip in clips:
+        if clip.w != target_width or clip.h != target_height:
+            # Resize maintaining aspect ratio, then crop/pad if necessary
+            clip = clip.resized(height=target_height) if clip.w / clip.h > target_width / target_height else clip.resized(width=target_width)
+            # Crop to exact size
+            if clip.w > target_width:
+                clip = clip.cropped(x1=(clip.w - target_width)/2, x2=(clip.w + target_width)/2)
+            if clip.h > target_height:
+                clip = clip.cropped(y1=(clip.h - target_height)/2, y2=(clip.h + target_height)/2)
+        resized_clips.append(clip)
+
+    return concatenate_videoclips(resized_clips, method="chain")
+
+
+def fast_concatenate_videos(video_paths, output_path):
+    """
+    Fast concatenation using ffmpeg without re-encoding.
+    Assumes videos have compatible codecs, resolution, etc.
+
+    Args:
+        video_paths: List of video file paths to concatenate.
+        output_path: Output video file path.
+    """
+    # Create a temporary file list for ffmpeg
+    list_file = "temp_concat_list.txt"
+    with open(list_file, 'w') as f:
+        for path in video_paths:
+            f.write(f"file '{path}'\n")
+
+    # Run ffmpeg concat
+    cmd = [
+        'ffmpeg', '-f', 'concat', '-safe', '0', '-i', list_file,
+        '-c', 'copy', '-y', output_path
+    ]
+    subprocess.run(cmd, check=True)
+
+    # Clean up
+    os.remove(list_file)
+
+
+async def create_video_from_matches_local(matches: list[dict], download_from_s3_func: Callable, temp_dir: str) -> str:
+    """
+    Creates a final video from matches using local video processing with moviepy.
+    Each match should have: matched_clip (S3 key) and clip_timestamp (start-end format).
+    Returns the local path to the final concatenated video.
+
+    This function:
+    1. Downloads each clip from S3
+    2. Cuts the clip based on timestamp
+    3. Concatenates all clips together
+
+    Args:
+        matches: List of match dictionaries with 'matched_clip' and 'clip_timestamp'
+        download_from_s3_func: Function to download files from S3
+        temp_dir: Temporary directory for processing
+
+    Returns:
+        Path to the final concatenated video file
+    """
+    if not matches:
+        raise ValueError("No matches provided")
+
+    print(f"Creating video from {len(matches)} matches using local processing...")
+
+    cut_clips = []
+    cut_clip_paths = []
+
+    try:
+        # Step 1: Download and cut each clip
+        for i, match in enumerate(matches):
+            s3_key = match.get("matched_clip")
+            clip_timestamp = match.get("clip_timestamp")
+
+            if not s3_key or not clip_timestamp:
+                print(f"Warning: Match {i} missing s3_key or timestamp, skipping.")
+                continue
+
+            # Parse timestamp
+            try:
+                start_time, end_time = parse_timestamp(clip_timestamp)
+                duration = end_time - start_time
+
+                if duration <= 0:
+                    print(f"Warning: Match {i} has invalid duration, skipping.")
+                    continue
+
+                print(f"Processing clip {i+1}: {s3_key} from {start_time}s to {end_time}s (duration: {duration}s)")
+
+                # Download from S3
+                local_source_path = os.path.join(temp_dir, f"source_{i}_{os.path.basename(s3_key)}")
+                download_from_s3_func(s3_key, local_source_path)
+
+                # Cut the clip using moviepy
+                print(f"Cutting clip {i+1}...")
+                video_clip = VideoFileClip(local_source_path)
+                cut_clip = video_clip.subclip(start_time, end_time)
+
+                # Save the cut clip
+                cut_clip_path = os.path.join(temp_dir, f"cut_{i}.mp4")
+                cut_clip.write_videofile(
+                    cut_clip_path,
+                    codec='libx264',
+                    audio_codec='aac',
+                    temp_audiofile=os.path.join(temp_dir, f"temp_audio_{i}.m4a"),
+                    remove_temp=True,
+                    fps=30,
+                    preset='medium'
+                )
+
+                cut_clips.append(cut_clip)
+                cut_clip_paths.append(cut_clip_path)
+
+                # Clean up source video
+                video_clip.close()
+                os.remove(local_source_path)
+
+            except Exception as e:
+                print(f"Error processing match {i}: {e}")
+                continue
+
+        if not cut_clip_paths:
+            raise ValueError("No valid clips were processed")
+
+        # Step 2: Concatenate all cut clips
+        print(f"Concatenating {len(cut_clip_paths)} clips...")
+
+        # Load all cut clips for concatenation
+        loaded_clips = []
+        for path in cut_clip_paths:
+            loaded_clips.append(VideoFileClip(path))
+
+        # Use the concatenation function
+        final_clip = concatenate_clips(*loaded_clips, target_width=1080, target_height=1920)
+
+        # Save final video
+        final_output_path = os.path.join(temp_dir, "final_video.mp4")
+        print(f"Writing final video to {final_output_path}...")
+        final_clip.write_videofile(
+            final_output_path,
+            codec='libx264',
+            audio_codec='aac',
+            temp_audiofile=os.path.join(temp_dir, "temp_audio_final.m4a"),
+            remove_temp=True,
+            fps=30,
+            preset='medium'
+        )
+
+        # Clean up
+        for clip in loaded_clips:
+            clip.close()
+        final_clip.close()
+
+        print(f"Video created successfully: {final_output_path}")
+        return final_output_path
+
+    except Exception as e:
+        # Clean up on error
+        for clip in cut_clips:
+            try:
+                clip.close()
+            except:
+                pass
+        raise e
