@@ -71,8 +71,7 @@ async def get_run_results_endpoint(run_id: str):
     Polls the Gumloop results endpoint for a given run_id.
     """
     try:
-        # Note: username and projectname are only needed for the mock data fallback
-        matches = await get_gumloop_results(run_id, "mock_user", "mock_project")
+        matches = await get_gumloop_results(run_id)
         if matches is not None:
             return {"status": "completed", "matches": matches}
         else:
@@ -123,7 +122,7 @@ async def process_video_task(project_id: str):
         max_retries = 30 # Poll for 5 minutes (30 * 10 seconds)
         for i in range(max_retries):
             print(f"Polling for Gumloop results (attempt {i+1}/{max_retries})...")
-            gumloop_matches = await get_gumloop_results(run_id, project["username"], project["projectName"])
+            gumloop_matches = await get_gumloop_results(run_id)
             if gumloop_matches is not None:
                 print("Gumloop matches received!")
                 break

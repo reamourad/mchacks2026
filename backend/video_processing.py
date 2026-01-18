@@ -9,6 +9,7 @@ def cut_clip(input_path: str, output_path: str, start_time: float, end_time: flo
     duration = end_time - start_time
     try:
         # Use stream copy for much faster processing (no re-encoding)
+        # Place ss before input for faster, more accurate seeking
         # This avoids the hanging issue with libx264
         (
             ffmpeg

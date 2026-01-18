@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { processProjectVideoBrowser } from '@/lib/services/browser-ffmpeg'
-import { uploadToS3, generateFinalVideoKey } from '@/lib/s3'
+import { createVideoWithBackend } from '@/lib/services/backend-video'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 
@@ -31,42 +30,37 @@ export default function VideoProcessor({
 
   const processVideo = async () => {
     setProcessing(true)
-    setStage('Starting...')
+    setStage('Starting backend processing...')
     setProgress(0)
 
     try {
-      // Process video in browser
-      const finalVideoBlob = await processProjectVideoBrowser(
-        clips,
-        gumloopMatches,
-        (currentStage, currentProgress) => {
-          setStage(currentStage)
-          setProgress(currentProgress)
-        }
+      // Call backend to process video
+      setStage('Sending request to backend...')
+      setProgress(10)
+
+      const result = await createVideoWithBackend(
+        username,
+        projectName,
+        gumloopMatches
       )
 
-      // Upload to S3
-      setStage('Uploading to S3...')
-      setProgress(95)
-
-      const s3Key = generateFinalVideoKey(username, projectName)
-      const finalVideoUrl = await uploadToS3(
-        Buffer.from(await finalVideoBlob.arrayBuffer()),
-        s3Key,
-        'video/mp4'
-      )
-
-      setStage('Complete!')
-      setProgress(100)
+      setStage('Video processing complete!')
+      setProgress(90)
 
       // Update project in database
       await fetch(`/api/project/${projectId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ finalVideoUrl, finalVideoS3Key: s3Key }),
+        body: JSON.stringify({
+          finalVideoUrl: result.videoUrl,
+          finalVideoS3Key: result.s3Key
+        }),
       })
 
-      onComplete(finalVideoUrl)
+      setStage('Complete!')
+      setProgress(100)
+
+      onComplete(result.videoUrl)
     } catch (error) {
       console.error('Error processing video:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -86,7 +80,7 @@ export default function VideoProcessor({
   if (!processing) {
     return (
       <Button onClick={processVideo} className="w-full">
-        Process Video (Browser)
+        Process Video
       </Button>
     )
   }
@@ -101,7 +95,7 @@ export default function VideoProcessor({
         <Progress value={progress} />
       </div>
       <p className="text-xs text-muted-foreground">
-        Processing in your browser... Please keep this tab open.
+        Processing video on backend server...
       </p>
     </div>
   )
