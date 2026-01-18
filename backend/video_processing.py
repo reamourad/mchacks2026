@@ -8,17 +8,25 @@ def cut_clip(input_path: str, output_path: str, start_time: float, end_time: flo
     """
     duration = end_time - start_time
     try:
-        (
-            ffmpeg
-            .input(input_path, ss=start_time)
-            .output(output_path, t=duration, vcodec='libx264', acodec='aac')
-            .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-        )
+        # Use copy codec for faster processing, add audio only if present
+        stream = ffmpeg.input(input_path, ss=start_time)
+
+        # Probe to check if audio exists
+        probe = ffmpeg.probe(input_path)
+        has_audio = any(stream['codec_type'] == 'audio' for stream in probe['streams'])
+
+        if has_audio:
+            output_stream = ffmpeg.output(stream, output_path, t=duration, vcodec='libx264', acodec='aac')
+        else:
+            # Video only, no audio
+            output_stream = ffmpeg.output(stream, output_path, t=duration, vcodec='libx264')
+
+        output_stream.run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
         print(f"Clip cut successfully: {output_path}")
     except ffmpeg.Error as e:
         print('stdout:', e.stdout.decode('utf8'))
         print('stderr:', e.stderr.decode('utf8'))
-        raise e
+        raise Exception("ffmpeg error (see stderr output for detail)")
 
 def assemble_video(clip_paths: list[str], output_path: str):
     """
@@ -34,16 +42,23 @@ def assemble_video(clip_paths: list[str], output_path: str):
         list_file_path = temp_file.name
 
     try:
-        (
-            ffmpeg
-            .input(list_file_path, format='concat', safe=0)
-            .output(output_path, vcodec='libx264', acodec='aac')
-            .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-        )
+        # Check if first clip has audio
+        probe = ffmpeg.probe(clip_paths[0])
+        has_audio = any(stream['codec_type'] == 'audio' for stream in probe['streams'])
+
+        stream = ffmpeg.input(list_file_path, format='concat', safe=0)
+
+        if has_audio:
+            output_stream = ffmpeg.output(stream, output_path, vcodec='libx264', acodec='aac')
+        else:
+            # Video only, no audio
+            output_stream = ffmpeg.output(stream, output_path, vcodec='libx264')
+
+        output_stream.run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
         print(f"Video assembled successfully: {output_path}")
     except ffmpeg.Error as e:
         print('stdout:', e.stdout.decode('utf8'))
         print('stderr:', e.stderr.decode('utf8'))
-        raise e
+        raise Exception("ffmpeg error (see stderr output for detail)")
     finally:
         os.unlink(list_file_path)
