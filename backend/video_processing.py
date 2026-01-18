@@ -12,8 +12,10 @@ configuration = mux_python.Configuration(
     username=os.environ.get('MUX_TOKEN_ID'),
     password=os.environ.get('MUX_TOKEN_SECRET'),
 )
-assets_api = mux_python.AssetsApi(mux_python.ApiClient(configuration))
-uploads_api = mux_python.UploadsApi(mux_python.ApiClient(configuration))
+api_client = mux_python.ApiClient(configuration)
+assets_api = mux_python.AssetsApi(api_client)
+uploads_api = mux_python.UploadsApi(api_client)
+
 
 async def wait_for_asset_ready(asset_id: str, timeout: int = 300):
     """Polls a Mux asset until its status is 'ready'."""
@@ -82,7 +84,7 @@ def assemble_video(clip_playback_ids: list[str], output_path: str, temp_dir: str
     try:
         # Download all clips
         for i, playback_id in enumerate(clip_playback_ids, 1):
-            clip_url = f"https://stream.mux.com/{playback_id}.m4a"
+            clip_url = f"https://stream.mux.com/{playback_id}.mp4"
             local_path = os.path.join(temp_dir, f"clip_{i}.mp4")
             
             print(f"Downloading clip {i}: {clip_url}")
@@ -117,7 +119,6 @@ def assemble_video(clip_playback_ids: list[str], output_path: str, temp_dir: str
         if 'clips' in locals():
             for clip in clips:
                 clip.close()
-
 # The old moviepy-only functions can be removed or kept as fallback
 # For now, I'm keeping them here but they are not used by the main logic anymore.
 
