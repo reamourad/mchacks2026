@@ -11,7 +11,14 @@ export type Clip = {
   size: number
 }
 
-export type GumloopMatch = Record<string, unknown>
+export type GumloopMatch = {
+  segment_id: number
+  segment_description: string
+  segment_time: string
+  matched_clip: string
+  clip_timestamp: string
+  reason: string
+}
 
 export type Project = {
   _id?: ObjectId
