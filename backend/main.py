@@ -14,7 +14,7 @@ from db import (
     update_project_completed,
 )
 from s3 import download_from_s3, upload_file_to_s3, generate_final_video_key, get_s3_url
-from video_processing import create_video_from_matches, create_merged_video, create_video_from_matches_local
+from video_processing import create_video_from_matches, create_merged_video, create_video_from_matches_local, add_subtitles_to_video
 from gumloop import start_gumloop_pipeline, get_gumloop_results, parse_timestamp
 import httpx
 
@@ -50,6 +50,11 @@ class CreateVideoRequest(BaseModel):
     username: str
     projectName: str
     matches: list[dict]  # Gumloop output matches
+
+class AddSubtitlesRequest(BaseModel):
+    username: str
+    projectName: str
+    transcriptJson: dict | None = None  # Optional transcript data
 
 @app.get("/")
 def read_root():
@@ -188,6 +193,76 @@ async def create_video_local_endpoint(request: CreateVideoRequest):
 
     except Exception as e:
         print(f"Error creating video locally: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # Clean up temp directory
+        if temp_dir and os.path.exists(temp_dir):
+            print(f"Cleaning up temp directory: {temp_dir}")
+            shutil.rmtree(temp_dir)
+
+
+@app.post("/add_subtitles")
+async def add_subtitles_endpoint(request: AddSubtitlesRequest):
+    """
+    Adds subtitles to the final video based on a transcript JSON.
+    Downloads the final video from S3, adds subtitles, and uploads as final_subtitle.mp4
+    """
+    temp_dir = None
+    try:
+        print(f"Adding subtitles for {request.username}/{request.projectName}")
+
+        # Create temp directory for processing
+        temp_dir = tempfile.mkdtemp(prefix=f"xpresso-subtitle-{request.username}-{request.projectName}-")
+
+        # Step 1: Download final video from S3
+        final_s3_key = generate_final_video_key(request.username, request.projectName)
+        local_video_path = os.path.join(temp_dir, "final_video.mp4")
+
+        print(f"Downloading final video from S3: {final_s3_key}")
+        download_from_s3(final_s3_key, local_video_path)
+
+        # Step 2: Create or download transcript JSON
+        transcript_json_path = os.path.join(temp_dir, "transcript.json")
+
+        if request.transcriptJson:
+            # Use provided transcript data
+            print("Using provided transcript data")
+            import json
+            with open(transcript_json_path, 'w') as f:
+                json.dump(request.transcriptJson, f, indent=2)
+        else:
+            # Try to download transcript from S3
+            transcript_s3_key = f"users/{request.username}/{request.projectName}/transcript.json"
+            print(f"Downloading transcript from S3: {transcript_s3_key}")
+            try:
+                download_from_s3(transcript_s3_key, transcript_json_path)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Transcript not found in S3 and not provided in request: {str(e)}"
+                )
+
+        # Step 3: Add subtitles to video
+        output_video_path = os.path.join(temp_dir, "final_subtitle.mp4")
+        print(f"Adding subtitles to video...")
+        add_subtitles_to_video(local_video_path, transcript_json_path, output_video_path)
+
+        # Step 4: Upload subtitled video to S3
+        subtitle_s3_key = f"users/{request.username}/{request.projectName}/final_subtitle.mp4"
+        print(f"Uploading subtitled video to S3: {subtitle_s3_key}")
+        subtitle_video_url = upload_file_to_s3(output_video_path, subtitle_s3_key)
+
+        print(f"Subtitled video created successfully: {subtitle_video_url}")
+
+        return {
+            "success": True,
+            "videoUrl": subtitle_video_url,
+            "s3Key": subtitle_s3_key,
+        }
+
+    except Exception as e:
+        print(f"Error adding subtitles: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
     finally:

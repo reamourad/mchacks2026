@@ -1,11 +1,13 @@
 import os
+import json
 from dotenv import load_dotenv
 import asyncio
 import httpx
 import subprocess
 import tempfile
 from typing import Callable
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+from moviepy.editor import VideoFileClip, concatenate_videoclips, TextClip, CompositeVideoClip, AudioFileClip
+from PIL import ImageFont
 
 # Load environment variables from .env.local in the parent directory
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env.local')
@@ -331,16 +333,112 @@ def fast_concatenate_videos(video_paths, output_path):
     os.remove(list_file)
 
 
+def cut_video_ffmpeg(input_path: str, output_path: str, start_time: float, end_time: float) -> None:
+    """
+    Cut video using FFmpeg subprocess (more reliable than moviepy).
+    """
+    duration = end_time - start_time
+
+    cmd = [
+        'ffmpeg',
+        '-y',  # Overwrite output file
+        '-ss', str(start_time),  # Start time
+        '-i', input_path,  # Input file
+        '-t', str(duration),  # Duration
+        '-c:v', 'libx264',  # Video codec
+        '-preset', 'medium',  # Encoding speed
+        '-crf', '23',  # Quality (lower = better, 18-28 is good range)
+        '-c:a', 'aac',  # Audio codec
+        '-b:a', '192k',  # Audio bitrate
+        '-movflags', '+faststart',  # Enable streaming
+        output_path
+    ]
+
+    print(f"Running FFmpeg command: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        raise Exception(f"FFmpeg error: {result.stderr}")
+
+    print(f"FFmpeg cut completed: {output_path}")
+
+
+def resize_and_crop_video_ffmpeg(input_path: str, output_path: str, target_width: int = 1080, target_height: int = 1920) -> None:
+    """
+    Resize and crop video to target dimensions using FFmpeg.
+    """
+    # FFmpeg filter to scale and crop to exact dimensions
+    filter_complex = f"scale={target_width}:{target_height}:force_original_aspect_ratio=increase,crop={target_width}:{target_height}"
+
+    cmd = [
+        'ffmpeg',
+        '-y',
+        '-i', input_path,
+        '-vf', filter_complex,
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-movflags', '+faststart',
+        output_path
+    ]
+
+    print(f"Resizing video: {input_path} -> {output_path}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        raise Exception(f"FFmpeg resize error: {result.stderr}")
+
+    print(f"Video resized successfully")
+
+
+def concatenate_videos_ffmpeg(video_paths: list[str], output_path: str) -> None:
+    """
+    Concatenate videos using FFmpeg (more reliable than moviepy).
+    """
+    # Create concat file
+    concat_file = output_path + ".concat.txt"
+    with open(concat_file, 'w') as f:
+        for video_path in video_paths:
+            # Use absolute path and escape single quotes
+            abs_path = os.path.abspath(video_path)
+            f.write(f"file '{abs_path}'\n")
+
+    cmd = [
+        'ffmpeg',
+        '-y',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concat_file,
+        '-c', 'copy',  # Copy without re-encoding for speed
+        output_path
+    ]
+
+    print(f"Concatenating {len(video_paths)} videos...")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # Clean up concat file
+    if os.path.exists(concat_file):
+        os.remove(concat_file)
+
+    if result.returncode != 0:
+        raise Exception(f"FFmpeg concat error: {result.stderr}")
+
+    print(f"Videos concatenated successfully: {output_path}")
+
+
 async def create_video_from_matches_local(matches: list[dict], download_from_s3_func: Callable, temp_dir: str) -> str:
     """
-    Creates a final video from matches using local video processing with moviepy.
+    Creates a final video from matches using FFmpeg subprocess commands.
     Each match should have: matched_clip (S3 key) and clip_timestamp (start-end format).
     Returns the local path to the final concatenated video.
 
     This function:
     1. Downloads each clip from S3
-    2. Cuts the clip based on timestamp
-    3. Concatenates all clips together
+    2. Cuts the clip based on timestamp using FFmpeg
+    3. Resizes/crops each clip to target dimensions
+    4. Concatenates all clips together
 
     Args:
         matches: List of match dictionaries with 'matched_clip' and 'clip_timestamp'
@@ -353,9 +451,8 @@ async def create_video_from_matches_local(matches: list[dict], download_from_s3_
     if not matches:
         raise ValueError("No matches provided")
 
-    print(f"Creating video from {len(matches)} matches using local processing...")
+    print(f"Creating video from {len(matches)} matches using FFmpeg...")
 
-    cut_clips = []
     cut_clip_paths = []
 
     try:
@@ -383,32 +480,33 @@ async def create_video_from_matches_local(matches: list[dict], download_from_s3_
                 local_source_path = os.path.join(temp_dir, f"source_{i}_{os.path.basename(s3_key)}")
                 download_from_s3_func(s3_key, local_source_path)
 
-                # Cut the clip using moviepy
-                print(f"Cutting clip {i+1}...")
-                video_clip = VideoFileClip(local_source_path)
-                cut_clip = video_clip.subclip(start_time, end_time)
+                # Verify file was downloaded
+                if not os.path.exists(local_source_path) or os.path.getsize(local_source_path) == 0:
+                    print(f"Error: Downloaded file is missing or empty: {local_source_path}")
+                    continue
 
-                # Save the cut clip
-                cut_clip_path = os.path.join(temp_dir, f"cut_{i}.mp4")
-                cut_clip.write_videofile(
-                    cut_clip_path,
-                    codec='libx264',
-                    audio_codec='aac',
-                    temp_audiofile=os.path.join(temp_dir, f"temp_audio_{i}.m4a"),
-                    remove_temp=True,
-                    fps=30,
-                    preset='medium'
-                )
+                # Cut the clip using FFmpeg
+                print(f"Cutting clip {i+1} with FFmpeg...")
+                cut_path = os.path.join(temp_dir, f"cut_{i}.mp4")
+                cut_video_ffmpeg(local_source_path, cut_path, start_time, end_time)
 
-                cut_clips.append(cut_clip)
-                cut_clip_paths.append(cut_clip_path)
+                # Resize and crop to target dimensions
+                print(f"Resizing clip {i+1}...")
+                resized_path = os.path.join(temp_dir, f"resized_{i}.mp4")
+                resize_and_crop_video_ffmpeg(cut_path, resized_path, target_width=1080, target_height=1920)
 
-                # Clean up source video
-                video_clip.close()
-                os.remove(local_source_path)
+                cut_clip_paths.append(resized_path)
+
+                # Clean up intermediate files
+                if os.path.exists(local_source_path):
+                    os.remove(local_source_path)
+                if os.path.exists(cut_path):
+                    os.remove(cut_path)
 
             except Exception as e:
                 print(f"Error processing match {i}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
         if not cut_clip_paths:
@@ -416,41 +514,189 @@ async def create_video_from_matches_local(matches: list[dict], download_from_s3_
 
         # Step 2: Concatenate all cut clips
         print(f"Concatenating {len(cut_clip_paths)} clips...")
-
-        # Load all cut clips for concatenation
-        loaded_clips = []
-        for path in cut_clip_paths:
-            loaded_clips.append(VideoFileClip(path))
-
-        # Use the concatenation function
-        final_clip = concatenate_clips(*loaded_clips, target_width=1080, target_height=1920)
-
-        # Save final video
         final_output_path = os.path.join(temp_dir, "final_video.mp4")
-        print(f"Writing final video to {final_output_path}...")
-        final_clip.write_videofile(
-            final_output_path,
-            codec='libx264',
-            audio_codec='aac',
-            temp_audiofile=os.path.join(temp_dir, "temp_audio_final.m4a"),
-            remove_temp=True,
-            fps=30,
-            preset='medium'
-        )
-
-        # Clean up
-        for clip in loaded_clips:
-            clip.close()
-        final_clip.close()
+        concatenate_videos_ffmpeg(cut_clip_paths, final_output_path)
 
         print(f"Video created successfully: {final_output_path}")
         return final_output_path
 
     except Exception as e:
-        # Clean up on error
-        for clip in cut_clips:
-            try:
-                clip.close()
-            except:
-                pass
+        print(f"Error in create_video_from_matches_local: {e}")
+        import traceback
+        traceback.print_exc()
         raise e
+
+
+def time_to_seconds(time_str: str) -> float:
+    """
+    Convert time string in format "MM:SS" or "HH:MM:SS" to seconds.
+    """
+    parts = time_str.split(':')
+    if len(parts) == 3:
+        hours, minutes, seconds = parts
+        return float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+    elif len(parts) == 2:
+        minutes, seconds = parts
+        return float(minutes) * 60 + float(seconds)
+    else:
+        return float(parts[0])
+
+
+def get_text_width(text: str, font_size: int, font_path: str) -> int:
+    """
+    Calculate the width of text in pixels.
+    """
+    try:
+        font = ImageFont.truetype(font_path, font_size)
+        bbox = font.getbbox(text)
+        return bbox[2] - bbox[0]
+    except:
+        # Fallback: estimate width
+        return len(text) * font_size * 0.6
+
+
+def get_styles():
+    """
+    Get emotion-to-style mappings for subtitles.
+    """
+    EMOTION_STYLES = {
+        "neutral":    {"color": "yellow",       "font": "backend/fonts/Playwrite_NG_Modern/static/PlaywriteNGModern-Regular.ttf"},
+        "confident":  {"color": "blue",        "font": "backend/fonts/Limelight/Limelight-Regular.ttf"},
+        "excited":    {"color": "yellow",      "font": "backend/fonts/Bowlby_One_SC/BowlbyOneSC-Regular.ttf"},
+        "happy":      {"color": "lightpink",   "font": "backend/fonts/Monsieur_La_Doulaise/MonsieurLaDoulaise-Regular.ttf"},
+        "serious":    {"color": "grey",        "font": "backend/fonts/Playfair_Display/static/PlayfairDisplay-Regular.ttf"},
+        "concerned":  {"color": "lightblue",    "font": "backend/fonts/Playwrite_NG_Modern/static/PlaywriteNGModern-Light.ttf"},
+        "empathetic": {"color": "lightgreen",   "font": "backend/fonts/Limelight/Limelight-Regular.ttf"},
+        "persuasive": {"color": "yellowgreen",  "font": "backend/fonts/Bowlby_One_SC/BowlbyOneSC-Regular.ttf"},
+        "reflective": {"color": "lavender",     "font": "backend/fonts/Monsieur_La_Doulaise/MonsieurLaDoulaise-Regular.ttf"},
+        "frustrated": {"color": "orange",       "font": "backend/fonts/Playfair_Display/static/PlayfairDisplay-Bold.ttf"},
+        "urgent":     {"color": "orangered",    "font": "backend/fonts/Playwrite_NG_Modern/static/PlaywriteNGModern-Thin.ttf"},
+        "sad":        {"color": "steelblue",    "font": "backend/fonts/Limelight/Limelight-Regular.ttf"}
+    }
+    return EMOTION_STYLES
+
+
+def add_subtitles_to_video(video_path: str, json_path: str, output_path: str, audio_path: str = None):
+    """
+    Add subtitles to a video based on a transcript JSON file.
+
+    Args:
+        video_path: Path to input video file
+        json_path: Path to transcript JSON file
+        output_path: Path to save output video with subtitles
+        audio_path: Optional path to audio file to replace video audio
+    """
+    video = VideoFileClip(video_path)
+
+    target_width = 1080
+    target_height = 1920
+    target_ratio = target_width / target_height
+    current_ratio = video.w / video.h
+
+    # Crop/resize to target dimensions if needed
+    if abs(current_ratio - target_ratio) > 0.01:
+        if current_ratio > target_ratio:
+            video = video.resized(height=target_height)
+            crop_x1 = (video.w - target_width) / 2
+            crop_x2 = crop_x1 + target_width
+            video = video.cropped(x1=crop_x1, y1=0, x2=crop_x2, y2=target_height)
+        else:
+            video = video.resized(width=target_width)
+            crop_y1 = (video.h - target_height) / 2
+            crop_y2 = crop_y1 + target_height
+            video = video.cropped(x1=0, y1=crop_y1, x2=target_width, y2=crop_y2)
+
+    # Load transcript data
+    with open(json_path, 'r') as f:
+        transcript_data = json.load(f)
+
+    styles = get_styles()
+    subtitle_clips = []
+    max_width_ratio = 0.7
+    max_height_ratio = 0.2
+    font_size = 75
+
+    for entry in transcript_data:
+        start_s = time_to_seconds(entry['start'])
+        end_s = time_to_seconds(entry['end'])
+        total_duration = end_s - start_s
+
+        if total_duration <= 0:
+            total_duration = 0.5  # Minimum duration for short entries
+
+        words = entry['text'].split()
+        if not words:
+            continue
+
+        emotion = entry.get('emotion', 'neutral')
+        style = styles.get(emotion, styles['neutral'])
+        text_color = style['color']
+        font_path = style['font']
+
+        # Check if font exists, fallback to default if not
+        if not os.path.exists(font_path):
+            print(f"Warning: Font not found at {font_path}, using default")
+            font_path = None  # Will use moviepy default
+
+        # Dynamic chunking
+        chunks = []
+        current_chunk = []
+        max_width = video.w * max_width_ratio
+
+        for word in words:
+            test_text = ' '.join(current_chunk + [word])
+            if font_path and get_text_width(test_text, font_size, font_path) <= max_width:
+                current_chunk.append(word)
+            elif len(test_text) * font_size * 0.6 <= max_width:  # Fallback estimation
+                current_chunk.append(word)
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = [word]
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        num_chunks = len(chunks)
+        if num_chunks == 0:
+            continue
+
+        chunk_duration = total_duration / num_chunks
+
+        for i, chunk in enumerate(chunks):
+            chunk_text = ' '.join(chunk)
+            chunk_start = start_s + i * chunk_duration
+
+            txt_clip_params = {
+                'text': chunk_text,
+                'font_size': font_size,
+                'color': text_color,
+                'stroke_color': 'black',
+                'stroke_width': 1.5,
+                'method': 'caption',
+                'size': (int(video.w * max_width_ratio), int(video.h * max_height_ratio))
+            }
+
+            if font_path:
+                txt_clip_params['font'] = font_path
+
+            txt_clip = TextClip(**txt_clip_params).with_start(chunk_start).with_duration(chunk_duration).with_position(('center', 0.85), relative=True)
+
+            subtitle_clips.append(txt_clip)
+
+    # Composite video with subtitles
+    final_video = CompositeVideoClip([video] + subtitle_clips)
+
+    # Add audio if provided
+    if audio_path and os.path.exists(audio_path):
+        audio = AudioFileClip(audio_path)
+        final_video = final_video.with_audio(audio)
+
+    # Write final video
+    final_video.write_videofile(output_path, fps=video.fps, threads=8, preset="ultrafast")
+
+    # Clean up
+    video.close()
+    for clip in subtitle_clips:
+        clip.close()
+    final_video.close()
