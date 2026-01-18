@@ -82,36 +82,26 @@ def assemble_video(clip_paths: list[str], output_path: str):
         # Build FFmpeg command based on whether audio is present
         if has_audio:
             # With audio - encode both video and audio
-            (
-                ffmpeg
-                .input(list_file_path, format='concat', safe=0)
-                .output(
-                    output_path,
-                    vcodec='libx264',
-                    acodec='aac',
-                    preset='medium',
-                    crf=23,
-                    pix_fmt='yuv420p',
-                    **{'movflags': '+faststart'}
-                )
-                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-            )
+            ffmpeg.input(list_file_path, format='concat', safe=0).output(
+                output_path,
+                vcodec='libx264',
+                acodec='aac',
+                preset='medium',
+                crf=23,
+                pix_fmt='yuv420p',
+                movflags='+faststart'
+            ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
         else:
-            # Video only - disable audio with 'an'
-            (
-                ffmpeg
-                .input(list_file_path, format='concat', safe=0)
-                .output(
-                    output_path,
-                    vcodec='libx264',
-                    preset='medium',
-                    crf=23,
-                    pix_fmt='yuv420p',
-                    an=True,  # Disable audio
-                    **{'movflags': '+faststart'}
-                )
-                .run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
-            )
+            # Video only - disable audio using an=None to generate -an flag
+            ffmpeg.input(list_file_path, format='concat', safe=0).output(
+                output_path,
+                vcodec='libx264',
+                preset='medium',
+                crf=23,
+                pix_fmt='yuv420p',
+                movflags='+faststart',
+                an=None
+            ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
 
         final_size = os.path.getsize(output_path)
         print(f"Video assembled successfully: {output_path} ({final_size} bytes)")
