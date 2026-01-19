@@ -122,7 +122,7 @@ def add_subtitles_to_video(video_path, json_path, output_path,audio_path=None):
     styles = get_styles()
 
     subtitle_clips = []
-    max_width_ratio = 0.7
+    max_width_ratio = 0.9
     max_height_ratio = 0.2
     font_size = 75
     
@@ -178,8 +178,8 @@ def add_subtitles_to_video(video_path, json_path, output_path,audio_path=None):
                 stroke_color='black',
                 stroke_width=1.5,
                 method='caption',
-                size=(int(video.w * max_width_ratio), int(video.h * max_height_ratio))
-            ).with_start(chunk_start).with_duration(chunk_duration).with_position(('center', 0.85), relative=True)
+                size=(int(max_width), int(video.h * max_height_ratio))
+            ).with_start(chunk_start).with_duration(chunk_duration).with_position(('center', 0.7), relative=True)
             
             subtitle_clips.append(txt_clip)
     
@@ -192,6 +192,7 @@ def add_subtitles_to_video(video_path, json_path, output_path,audio_path=None):
 
 
     final_video.write_videofile(output_path, fps=video.fps, threads=8, preset="ultrafast")
+    return final_video
 
 
 # Example usage
@@ -204,7 +205,7 @@ import os
 target_width, target_height = 1080, 1920
 temp_files = []
 
-for i, path in enumerate(["./BackEnd/coding_18s.mp4", "./BackEnd/browsing_15s.mp4"]):
+for i, path in enumerate(["./BackEnd/test_assets/1vid.mov", "./BackEnd/test_assets/2vid.mov"]):
     clip = VideoFileClip(path)
     # Resize logic
     current_ratio = clip.w / clip.h
@@ -219,14 +220,19 @@ for i, path in enumerate(["./BackEnd/coding_18s.mp4", "./BackEnd/browsing_15s.mp
             crop_y1 = (clip.h - target_height) / 2
             clip = clip.cropped(x1=0, y1=crop_y1, x2=target_width, y2=crop_y1 + target_height)
     
-    temp_file = f"./BackEnd/temp_{i}.mp4"
+    temp_file = f"./BackEnd/test_assets/temp_{i}.mp4"
     clip.write_videofile(temp_file, fps=clip.fps, threads=8, preset="ultrafast")
     temp_files.append(temp_file)
     clip.close()
 
 # Fast concatenate the resized videos
-fast_concatenate_videos(temp_files, "./BackEnd/combined_video.mp4")
+fast_concatenate_videos(temp_files, "./BackEnd/test_assets/combined_video.mp4")
+
+# Add subtitles to the combined video
+add_subtitles_to_video("./BackEnd/test_assets/combined_video.mp4", "output_json.json", "./BackEnd/test_assets/combined_with_subtitles.mp4", audio_path="./BackEnd/test_assets/10sec.m4a")
+
 
 # Clean up temp files
 for temp in temp_files:
     os.remove(temp)
+
