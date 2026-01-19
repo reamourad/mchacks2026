@@ -44,78 +44,13 @@ export default function Upload({
   }
 
   const createProject = async () => {
-    if (!projectName.trim()) {
-      alert('Please enter a project name')
-      return
-    }
-
-    setCreating(true)
-    try {
-      const response = await fetch('/api/project/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectName: projectName.trim() }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to create project')
-      }
-
-      const data = await response.json()
-      onProjectCreate(data.projectId, projectName.trim())
-    } catch (error) {
-      console.error('Error creating project:', error)
-      alert(error instanceof Error ? error.message : 'Failed to create project')
-    } finally {
-      setCreating(false)
-    }
+    // TODO: Implement backend API call
+    console.log('createProject not implemented')
   }
 
   const uploadFiles = async () => {
-    if (!projectId) {
-      alert('Please create a project first')
-      return
-    }
-
-    if (selectedFiles.length === 0) {
-      alert('Please select files to upload')
-      return
-    }
-
-    setUploading(true)
-
-    try {
-      for (const file of selectedFiles) {
-        const formData = new FormData()
-        formData.append('projectId', projectId)
-        formData.append('file', file)
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        })
-
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || `Failed to upload ${file.name}`)
-        }
-
-        const data = await response.json()
-        onClipUploaded(data.clip)
-      }
-
-      // Clear selected files
-      setSelectedFiles([])
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    } catch (error) {
-      console.error('Error uploading files:', error)
-      alert(error instanceof Error ? error.message : 'Failed to upload files')
-    } finally {
-      setUploading(false)
-    }
+    // TODO: Implement backend API call
+    console.log('uploadFiles not implemented')
   }
 
   if (!user) {

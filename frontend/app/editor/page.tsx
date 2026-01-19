@@ -87,31 +87,14 @@ export default function Editor() {
 
   const clips = useMemo(() => project?.clips || [], [project?.clips])
 
-  // Poll project status when processing
-  useEffect(() => {
-    if (!projectId || project?.status === 'completed' || project?.status === 'failed') {
-      return
-    }
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/project/${projectId}`)
-        if (response.ok) {
-          const data = await response.json()
-          setProject(data.project)
-
-          // Stop polling if completed or failed
-          if (data.project.status === 'completed' || data.project.status === 'failed') {
-            clearInterval(pollInterval)
-          }
-        }
-      } catch (error) {
-        console.error('Error polling project:', error)
-      }
-    }, 3000) // Poll every 3 seconds
-
-    return () => clearInterval(pollInterval)
-  }, [projectId, project?.status])
+  // TODO: Implement polling for project status when backend is ready
+  // useEffect(() => {
+  //   if (!projectId || project?.status === 'completed' || project?.status === 'failed') {
+  //     return
+  //   }
+  //   const pollInterval = setInterval(async () => { ... }, 3000)
+  //   return () => clearInterval(pollInterval)
+  // }, [projectId, project?.status])
 
   const handleProjectCreate = (id: string, name: string) => {
     setProjectId(id)
@@ -135,109 +118,19 @@ export default function Editor() {
   }
 
   const handleProcessStart = async () => {
-    if (!projectId) return
-
-    try {
-      const response = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Failed to start processing')
-      }
-
-      // Update status to processing
-      setProject((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          status: 'processing',
-        }
-      })
-    } catch (error) {
-      console.error('Error starting processing:', error)
-      alert(error instanceof Error ? error.message : 'Failed to start processing')
-    }
+    // TODO: Implement backend API call
+    console.log('handleProcessStart not implemented')
   }
 
   const createProject = async (nameOverride?: string): Promise<string | null> => {
-    const nameToUse = (nameOverride ?? projectName).trim()
-    if (!nameToUse) return null
-
-    setCreating(true)
-    try {
-      const response = await fetch('/api/project/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectName: nameToUse }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new Error(error.error || 'Failed to create project')
-      }
-
-      const data = await response.json()
-      handleProjectCreate(data.projectId, nameToUse)
-      return data.projectId as string
-    } catch (error) {
-      console.error('Error creating project:', error)
-      alert(error instanceof Error ? error.message : 'Failed to create project')
-      return null
-    } finally {
-      setCreating(false)
-    }
+    // TODO: Implement backend API call
+    console.log('createProject not implemented')
+    return null
   }
 
   const uploadFiles = async (filesOverride?: File[]) => {
-    const filesToUpload = filesOverride ?? selectedFiles
-    if (filesToUpload.length === 0) {
-      alert('Select at least one video file')
-      return
-    }
-
-    let ensuredProjectId = projectId
-    if (!ensuredProjectId) {
-      const fallbackName = projectName.trim() || `Untitled Project ${new Date().toLocaleString()}`
-      setProjectName(fallbackName)
-      const createdId = await createProject(fallbackName)
-      ensuredProjectId = createdId
-    }
-
-    if (!ensuredProjectId) return
-
-    setUploading(true)
-    try {
-      for (const file of filesToUpload) {
-        const formData = new FormData()
-        formData.append('projectId', ensuredProjectId)
-        formData.append('file', file)
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        })
-
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}))
-          throw new Error(error.error || `Failed to upload ${file.name}`)
-        }
-
-        const data = await response.json()
-        handleClipUploaded(data.clip)
-      }
-
-      setSelectedFiles([])
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    } catch (error) {
-      console.error('Error uploading files:', error)
-      alert(error instanceof Error ? error.message : 'Failed to upload files')
-    } finally {
-      setUploading(false)
-    }
+    // TODO: Implement backend API call
+    console.log('uploadFiles not implemented')
   }
 
   const handleCenterUploadClick = () => {
