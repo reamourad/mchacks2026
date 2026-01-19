@@ -15,7 +15,8 @@
       "Bash(git push:*)",
       "Bash(python -m py_compile:*)",
       "Bash(python3:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git mv:*)"
     ]
   }
 }
