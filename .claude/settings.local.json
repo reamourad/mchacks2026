@@ -16,7 +16,14 @@
       "Bash(python -m py_compile:*)",
       "Bash(python3:*)",
       "Bash(npx tsc:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(dir C:UsersReaPycharmProjectsmchacks2026backend.env*)",
+      "Bash(dir C:UsersReaPycharmProjectsmchacks2026.env*)",
+      "Bash(dir C:UsersReaPycharmProjectsmchacks2026frontend.env*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(venvScriptspip install certifi)",
+      "Bash(pip install:*)"
     ]
   }
 }
