@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # CORS
     frontend_url: str = "http://localhost:3000"
 
+    # ElevenLabs
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # Default: Rachel voice
+
     class Config:
         env_file = ".env"
         extra = "ignore"  # Ignore extra env variables not defined here

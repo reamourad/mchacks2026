@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from config import get_settings
 from database import connect_to_mongo, close_mongo_connection
 from middleware import SessionMiddleware
-from routers import projects_router
+from routers import projects_router, assets_router, clips_router, voiceover_router
 
 settings = get_settings()
 
@@ -40,6 +40,9 @@ app.add_middleware(SessionMiddleware)
 
 # Include routers
 app.include_router(projects_router, prefix="/api")
+app.include_router(assets_router, prefix="/api")
+app.include_router(clips_router, prefix="/api")
+app.include_router(voiceover_router, prefix="/api")
 
 
 @app.get("/")

@@ -90,3 +90,34 @@ async def generate_presigned_url(
     except ClientError as e:
         print(f"Error generating presigned URL: {e}")
         return None
+
+
+async def generate_presigned_upload_url(
+    s3_key: str,
+    content_type: str = "video/mp4",
+    expiration: int = 3600,
+) -> Optional[str]:
+    """Generate a presigned URL specifically for uploading."""
+    client = get_s3_client()
+    if not client:
+        return None
+
+    try:
+        url = client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": settings.aws_s3_bucket,
+                "Key": s3_key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=expiration,
+        )
+        return url
+    except ClientError as e:
+        print(f"Error generating presigned upload URL: {e}")
+        return None
+
+
+def get_s3_url(s3_key: str) -> str:
+    """Get the public URL for an S3 object."""
+    return f"https://{settings.aws_s3_bucket}.s3.{settings.aws_region}.amazonaws.com/{s3_key}"

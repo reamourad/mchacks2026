@@ -11,13 +11,28 @@ class ProjectStatus(str, Enum):
     FAILED = "failed"
 
 
-class Clip(BaseModel):
-    clip_number: int
-    filename: str
-    s3_key: str
-    s3_url: str
-    duration: Optional[float] = None
-    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+class TimelineClip(BaseModel):
+    """A clip in the project timeline - references an asset with timestamps."""
+    id: str  # unique clip ID within project
+    asset_id: str  # references Asset._id
+    start_time: float = 0.0  # start time in source video (seconds)
+    end_time: float  # end time in source video (seconds)
+    order: int  # position in timeline
+
+
+class ClipCreate(BaseModel):
+    """Data needed to create a new clip."""
+    asset_id: str
+    start_time: float = 0.0
+    end_time: float
+    order: Optional[int] = None  # auto-assign if not provided
+
+
+class ClipUpdate(BaseModel):
+    """Data for updating a clip."""
+    start_time: Optional[float] = None
+    end_time: Optional[float] = None
+    order: Optional[int] = None
 
 
 class ProjectBase(BaseModel):
@@ -37,7 +52,7 @@ class ProjectInDB(ProjectBase):
     user_id: Optional[str] = None  # None for anonymous projects
     session_id: Optional[str] = None  # For anonymous projects
     status: ProjectStatus = ProjectStatus.DRAFT
-    clips: list[Clip] = []
+    clips: list[TimelineClip] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -49,6 +64,6 @@ class ProjectResponse(ProjectBase):
     id: str
     user_id: Optional[str] = None
     status: ProjectStatus
-    clips: list[Clip] = []
+    clips: list[TimelineClip] = []
     created_at: datetime
     updated_at: datetime
