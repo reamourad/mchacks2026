@@ -121,3 +121,55 @@ async def generate_presigned_upload_url(
 def get_s3_url(s3_key: str) -> str:
     """Get the public URL for an S3 object."""
     return f"https://{settings.aws_s3_bucket}.s3.{settings.aws_region}.amazonaws.com/{s3_key}"
+
+
+async def download_file(s3_key: str, local_path: str) -> bool:
+    """Download a file from S3 to local path."""
+    client = get_s3_client()
+    if not client:
+        return False
+
+    try:
+        client.download_file(settings.aws_s3_bucket, s3_key, local_path)
+        return True
+    except ClientError as e:
+        print(f"Error downloading from S3: {e}")
+        return False
+
+
+async def upload_local_file(local_path: str, s3_key: str, content_type: str = "video/mp4") -> bool:
+    """Upload a local file to S3."""
+    client = get_s3_client()
+    if not client:
+        return False
+
+    try:
+        client.upload_file(
+            local_path,
+            settings.aws_s3_bucket,
+            s3_key,
+            ExtraArgs={"ContentType": content_type},
+        )
+        return True
+    except ClientError as e:
+        print(f"Error uploading to S3: {e}")
+        return False
+
+
+class S3Service:
+    """S3 service wrapper for video export pipeline."""
+
+    async def download_file(self, s3_key: str, local_path: str) -> bool:
+        return await download_file(s3_key, local_path)
+
+    async def upload_file(self, local_path: str, s3_key: str, content_type: str = "video/mp4") -> bool:
+        return await upload_local_file(local_path, s3_key, content_type)
+
+    async def get_download_url(self, s3_key: str, expiration: int = 3600) -> Optional[str]:
+        return await generate_presigned_url(s3_key, expiration, for_upload=False)
+
+    async def delete_file(self, s3_key: str) -> bool:
+        return await delete_file(s3_key)
+
+
+s3_service = S3Service()

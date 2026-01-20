@@ -23,7 +23,14 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(venvScriptspip install certifi)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(powershell -Command \"Invoke-WebRequest -Uri ''https://fonts.google.com/download?family=Playfair+Display'' -OutFile ''Playfair_Display.zip''; Expand-Archive -Path ''Playfair_Display.zip'' -DestinationPath ''Playfair_Display'' -Force; Remove-Item ''Playfair_Display.zip''\")",
+      "Bash(git checkout:*)",
+      "Bash(xcopy:*)",
+      "Bash(powershell -Command \"Copy-Item -Path 'C:\\\\Users\\\\Rea\\\\PycharmProjects\\\\mchacks2026\\\\BackEnd\\\\fonts\\\\*' -Destination 'C:\\\\Users\\\\Rea\\\\PycharmProjects\\\\mchacks2026\\\\backend\\\\fonts\\\\' -Recurse -Force\":*)",
+      "Bash(powershell:*)",
+      "Bash(C:ffmpegbinffmpeg.exe -version)"
     ]
   }
 }
